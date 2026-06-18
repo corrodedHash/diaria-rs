@@ -2,8 +2,11 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, Generate, KeyInit},
 };
+use std::io::Read;
 use thiserror::Error;
 use x448::{EphemeralSecret as X448PrivateKey, PublicKey as X448PublicKey};
+
+pub type SymmetricKey = [u8; 32];
 
 const MAGIC_TAG: &[u8; 6] = b"DIARIA";
 const VERSION: u8 = 1;
@@ -28,6 +31,10 @@ pub enum EntryError {
     InvalidMagicTag,
     #[error("Unsupported version")]
     UnsupportedVersion,
+    #[error("Compression failed")]
+    CompressionFailed,
+    #[error("Decompression failed")]
+    DecompressionFailed,
 }
 
 fn generate_keypair() -> (X448PrivateKey, X448PublicKey) {
@@ -39,10 +46,11 @@ fn generate_keypair() -> (X448PrivateKey, X448PublicKey) {
 fn derive_shared_secret(
     private_key: &X448PrivateKey,
     peer_public_key: &X448PublicKey,
+    salt: &SymmetricKey,
 ) -> chacha20poly1305::Key {
     let ikm = private_key.diffie_hellman(peer_public_key);
 
-    let hk = hkdf::Hkdf::<sha2::Sha256>::new(None, ikm.as_bytes());
+    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(salt), ikm.as_bytes());
     let mut okm = chacha20poly1305::Key::default();
     hk.expand(b"diaria entry shared secret", &mut okm)
         .expect("42 is a valid length for Sha256 to output");
@@ -50,14 +58,18 @@ fn derive_shared_secret(
     okm
 }
 
-fn encrypt(long_term_public: &X448PublicKey, plaintext: &str) -> Result<Vec<u8>, EntryError> {
+fn encrypt(
+    long_term_public: &X448PublicKey,
+    plaintext: &[u8],
+    salt: &SymmetricKey,
+) -> Result<Vec<u8>, EntryError> {
     let (ephemeral_private, ephemeral_public) = generate_keypair();
-    let shared_secret = derive_shared_secret(&ephemeral_private, long_term_public);
+    let shared_secret = derive_shared_secret(&ephemeral_private, long_term_public, salt);
 
     let cipher = XChaCha20Poly1305::new(&shared_secret);
     let nonce = chacha20poly1305::XNonce::generate();
     let ciphertext = cipher
-        .encrypt(&nonce, plaintext.as_bytes())
+        .encrypt(&nonce, plaintext)
         .map_err(|_| EntryError::EncryptionFailed)?;
 
     let mut result = Vec::with_capacity(56 + 24 + ciphertext.len());
@@ -68,7 +80,11 @@ fn encrypt(long_term_public: &X448PublicKey, plaintext: &str) -> Result<Vec<u8>,
     Ok(result)
 }
 
-fn decrypt(long_term_private: &X448PrivateKey, ciphertext: &[u8]) -> Result<String, EntryError> {
+fn decrypt(
+    long_term_private: &X448PrivateKey,
+    ciphertext: &[u8],
+    salt: &SymmetricKey,
+) -> Result<Vec<u8>, EntryError> {
     if ciphertext.len() < 80 {
         return Err(EntryError::CiphertextTooShort);
     }
@@ -78,18 +94,40 @@ fn decrypt(long_term_private: &X448PrivateKey, ciphertext: &[u8]) -> Result<Stri
     let nonce = XNonce::try_from(&ciphertext[56..80]).map_err(|_| EntryError::InvalidNonce)?;
     let actual_ciphertext = &ciphertext[80..];
 
-    let shared_secret = derive_shared_secret(long_term_private, &ephemeral_public);
+    let shared_secret = derive_shared_secret(long_term_private, &ephemeral_public, salt);
     let cipher = XChaCha20Poly1305::new_from_slice(&shared_secret)
         .map_err(|_| EntryError::DecryptionFailed)?;
 
     let plaintext = cipher
         .decrypt(&nonce, actual_ciphertext)
         .map_err(|_| EntryError::DecryptionFailed)?;
-    Ok(String::from_utf8(plaintext).map_err(|_| EntryError::InvalidUtf8)?)
+
+    Ok(plaintext)
 }
 
-pub fn encode(long_term_public: &X448PublicKey, plaintext: &str) -> Result<Vec<u8>, EntryError> {
-    let encrypted = encrypt(long_term_public, plaintext)?;
+fn compress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
+    brotli::CompressorReader::new(input, 4096, 11, 22)
+        .bytes()
+        .collect::<Result<Vec<u8>, _>>()
+        .map_err(|_| EntryError::CompressionFailed)
+}
+
+fn decompress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
+    let mut input = brotli::Decompressor::new(input, 4096);
+    let mut buf = Vec::new();
+    input
+        .read_to_end(&mut buf)
+        .map_err(|_| EntryError::DecompressionFailed)?;
+    Ok(buf)
+}
+
+pub fn encode(
+    long_term_public: &X448PublicKey,
+    plaintext: &str,
+    salt: &SymmetricKey,
+) -> Result<Vec<u8>, EntryError> {
+    let compressed = compress(plaintext.as_bytes())?;
+    let encrypted = encrypt(long_term_public, &compressed, salt)?;
 
     let mut result = Vec::with_capacity(6 + 1 + encrypted.len());
     result.extend_from_slice(MAGIC_TAG);
@@ -102,6 +140,7 @@ pub fn encode(long_term_public: &X448PublicKey, plaintext: &str) -> Result<Vec<u
 pub fn decode(
     long_term_private: &crate::X448PrivateKey,
     data: &[u8],
+    salt: &SymmetricKey,
 ) -> Result<String, EntryError> {
     if data.len() < 7 {
         return Err(EntryError::DataTooShort);
@@ -116,7 +155,8 @@ pub fn decode(
     }
 
     let ciphertext = &data[7..];
-    decrypt(long_term_private, ciphertext)
+    let plaintext = decrypt(long_term_private, ciphertext, salt)?;
+    String::from_utf8(decompress(&plaintext)?).map_err(|_| EntryError::InvalidUtf8)
 }
 
 #[cfg(test)]
@@ -126,18 +166,28 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt() {
         let (long_term_private, long_term_public) = generate_keypair();
-        let message = "Hello, this is a secret message!";
-        let encrypted = encrypt(&long_term_public, message).expect("Encryption failed");
-        let decrypted = decrypt(&long_term_private, &encrypted).expect("Decryption failed");
+        let message = Vec::from(b"Hello, this is a secret message!");
+        let salt = [0u8; 32];
+        let encrypted = encrypt(&long_term_public, &message, &salt).expect("Encryption failed");
+        let decrypted = decrypt(&long_term_private, &encrypted, &salt).expect("Decryption failed");
         assert_eq!(message, decrypted);
+    }
+
+    #[test]
+    fn test_compress_decompress() {
+        let message = Vec::from(b"Hello, this is a secret message!");
+        let compressed = compress(&message).expect("Compression failed");
+        let decompressed = decompress(&compressed).expect("Decompression failed");
+        assert_eq!(message, decompressed);
     }
 
     #[test]
     fn test_encode_decode() {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = "Hello, this is a secret message!";
-        let encoded = encode(&long_term_public, message).expect("Encoding failed");
-        let decoded = decode(&long_term_private, &encoded).expect("Decoding failed");
+        let salt = [0u8; 32];
+        let encoded = encode(&long_term_public, message, &salt).expect("Encoding failed");
+        let decoded = decode(&long_term_private, &encoded, &salt).expect("Decoding failed");
         assert_eq!(message, decoded);
     }
 
@@ -145,9 +195,10 @@ mod tests {
     fn test_decode_fails() {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = "Hello, this is a secret message!";
-        let mut encoded = encode(&long_term_public, message).expect("Encoding failed");
+        let salt = [0u8; 32];
+        let mut encoded = encode(&long_term_public, message, &salt).expect("Encoding failed");
         encoded[0] = 0x00; // Corrupt the magic tag
-        let decoded = decode(&long_term_private, &encoded);
+        let decoded = decode(&long_term_private, &encoded, &salt);
         assert_eq!(decoded, Err(EntryError::InvalidMagicTag));
     }
 }

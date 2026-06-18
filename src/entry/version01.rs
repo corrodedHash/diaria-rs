@@ -125,7 +125,8 @@ fn decrypt(
 }
 
 fn compress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
-    brotli::CompressorReader::new(input, 4096, 11, 22)
+    let compress_reader = brotli::CompressorReader::new(input, 4096, 11, 22);
+    std::io::BufReader::new(compress_reader)
         .bytes()
         .collect::<Result<Vec<u8>, _>>()
         .map_err(|_| EntryError::CompressionFailed)

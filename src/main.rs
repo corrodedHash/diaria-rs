@@ -11,8 +11,7 @@ use xdg::BaseDirectories;
 mod entry;
 
 #[derive(Parser)]
-#[command(name = "diaria")]
-#[command(version = "0.1.0")]
+#[command(version, about, name = "diaria")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -64,9 +63,9 @@ fn load_symmetric_key() -> SymmetricKey {
     let base_dir = get_base_dir();
     let key_path = base_dir.join("key.sym");
     let key_bytes = fs::read(&key_path).expect("Failed to read symmetric key");
-    let mut salt = [0u8; 32];
-    salt.copy_from_slice(&key_bytes[..32]);
-    salt
+    let mut symkey = [0u8; 32];
+    symkey.copy_from_slice(&key_bytes[..32]);
+    symkey
 }
 
 fn load_public_key() -> X448PublicKey {
@@ -78,7 +77,7 @@ fn load_public_key() -> X448PublicKey {
 
 fn load_private_key() -> [u8; 56] {
     let base_dir = get_base_dir();
-    let key_path = base_dir.join("key.priv");
+    let key_path = base_dir.join("key.key");
     let key_bytes = fs::read(&key_path).expect("Failed to read private key");
     let mut private_key = [0u8; 56];
     private_key.copy_from_slice(&key_bytes[..56]);
@@ -123,12 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let selection =
                     FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
                         .with_prompt("Select an entry")
-                        .items(
-                            entries
-                                .iter()
-                                .map(|p| p.display().to_string())
-                                .collect::<Vec<_>>(),
-                        )
+                        .items(entries.iter().map(|p| p.display()).collect::<Vec<_>>())
                         .interact()?;
 
                 entries[selection].clone()

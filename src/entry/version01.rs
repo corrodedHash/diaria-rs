@@ -1,10 +1,10 @@
 use chacha20poly1305::{
-    aead::{Aead, Generate, KeyInit},
     XChaCha20Poly1305, XNonce,
+    aead::{Aead, Generate, KeyInit},
 };
 use std::io::Read;
 use thiserror::Error;
-use x448::{x448, EphemeralSecret as X448PrivateKey, PublicKey as X448PublicKey};
+use x448::{EphemeralSecret as X448PrivateKey, PublicKey as X448PublicKey, x448};
 
 pub type SymmetricKey = [u8; 32];
 

@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
                         .with_prompt("Select an entry")
                         .items(
-                            &entries
+                            entries
                                 .iter()
                                 .map(|p| p.display().to_string())
                                 .collect::<Vec<_>>(),

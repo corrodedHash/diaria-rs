@@ -47,7 +47,7 @@ pub enum EntryError {
     ChachaKeylengthMismatch(#[from] sha2::digest::InvalidLength),
 }
 
-fn generate_keypair() -> (X448PrivateKey, X448PublicKey) {
+pub fn generate_keypair() -> (X448PrivateKey, X448PublicKey) {
     let private_key = X448PrivateKey::generate();
     let public_key = X448PublicKey::from(&private_key);
     (private_key, public_key)
@@ -96,7 +96,7 @@ fn encrypt(
     let nonce = chacha20poly1305::XNonce::generate();
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
-        .map_err(|e| EntryError::Chacha20Poly1305(e))?;
+        .map_err(EntryError::Chacha20Poly1305)?;
 
     let mut result = Vec::with_capacity(56 + 24 + ciphertext.len());
     result.extend_from_slice(ephemeral_public.as_bytes());

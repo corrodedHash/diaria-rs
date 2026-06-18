@@ -1,7 +1,15 @@
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHasher, SaltString},
+};
+use chacha20poly1305::{
+    XChaCha20Poly1305,
+    aead::{Aead, Generate as _, KeyInit},
+};
 use chrono::Local;
 use clap::{Parser, Subcommand};
-use dialoguer::{Editor, FuzzySelect};
-use entry::version01::{SymmetricKey, decode};
+use dialoguer::{Editor, FuzzySelect, Password};
+use entry::version01::{SymmetricKey, decode, generate_keypair};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -46,6 +54,12 @@ fn get_base_dir() -> PathBuf {
         .expect("Failed to get base dir")
 }
 
+fn create_base_dir() -> PathBuf {
+    let base_dir = get_base_dir();
+    fs::create_dir_all(&base_dir).expect("Failed to create base directory");
+    base_dir
+}
+
 fn get_entries_dir() -> PathBuf {
     let base_dir = get_base_dir();
     let entries_dir = base_dir.join("entries");
@@ -57,6 +71,28 @@ fn get_entry_path() -> PathBuf {
     let entries_dir = get_entries_dir();
     let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     entries_dir.join(format!("{}.diaria", timestamp))
+}
+
+fn get_password() -> String {
+    Password::new()
+        .with_prompt("Enter encryption password")
+        .interact()
+        .expect("Failed to read password")
+}
+
+fn derive_key_from_password(password: &str, salt: &SymmetricKey) -> [u8; 32] {
+    let argon2 = Argon2::default();
+    let salt_string = SaltString::encode_b64(salt).expect("Failed to encode salt");
+
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt_string)
+        .expect("Failed to hash password");
+
+    let hash_string = password_hash.to_string();
+    let hash_bytes = hash_string.as_bytes();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&hash_bytes[..32]);
+    key
 }
 
 fn load_symmetric_key() -> SymmetricKey {
@@ -91,7 +127,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Commands::Init => {
-            todo!()
+            let base_dir = create_base_dir();
+            let entries_dir = base_dir.join("entries");
+            fs::create_dir_all(&entries_dir).expect("Failed to create entries directory");
+
+            let password = get_password();
+            let argon2_salt = {
+                let mut salt = [0u8; 32];
+                rand::fill(&mut salt);
+                salt
+            };
+
+            let (private_key, public_key) = generate_keypair();
+            let symmetric_key = argon2_salt;
+            let encryption_key = derive_key_from_password(&password, &argon2_salt);
+
+            let cipher = XChaCha20Poly1305::new_from_slice(&encryption_key)
+                .expect("Failed to create cipher");
+            let nonce = chacha20poly1305::XNonce::generate();
+            let encrypted_private_key = cipher
+                .encrypt(&nonce, &private_key.as_bytes()[..])
+                .expect("Failed to encrypt private key");
+
+            let mut key_file = Vec::with_capacity(24 + encrypted_private_key.len());
+            key_file.extend_from_slice(&nonce);
+            key_file.extend_from_slice(&encrypted_private_key);
+
+            fs::write(base_dir.join("key.key"), &key_file)?;
+            fs::write(base_dir.join("key.pub"), public_key.as_bytes())?;
+            fs::write(base_dir.join("key.sym"), symmetric_key)?;
+
+            println!("Initialized diaria in {}", base_dir.display());
         }
         Commands::Add { input } => {
             let entry_path = get_entry_path();

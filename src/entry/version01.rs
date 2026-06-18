@@ -17,26 +17,14 @@ pub enum EntryError {
     CiphertextTooShort,
     #[error("Invalid public key")]
     InvalidPublicKey,
-    #[error("Invalid nonce")]
-    InvalidNonce,
-    #[error("Encryption failed")]
-    EncryptionFailed,
     #[error("Decryption failed")]
     DecryptionFailed(chacha20poly1305::Error),
-    #[error("Invalid UTF-8")]
-    InvalidUtf8,
     #[error("Data too short for magic tag and version")]
     DataTooShort,
     #[error("Invalid magic tag")]
     InvalidMagicTag,
     #[error("Unsupported version")]
     UnsupportedVersion,
-    #[error("Compression failed")]
-    CompressionFailed,
-    #[error("Decompression failed")]
-    DecompressionFailed,
-    #[error("Failed to load private key")]
-    LoadPrivateKey,
     #[error("Chacha20Poly1305 error: {0}")]
     Chacha20Poly1305(#[from] chacha20poly1305::Error),
     #[error("IO error: {0}")]

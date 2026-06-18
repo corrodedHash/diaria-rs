@@ -11,7 +11,7 @@ pub type SymmetricKey = [u8; 32];
 const MAGIC_TAG: &[u8; 6] = b"DIARIA";
 const VERSION: u8 = 1;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum EntryError {
     #[error("Ciphertext too short")]
     CiphertextTooShort,
@@ -22,7 +22,7 @@ pub enum EntryError {
     #[error("Encryption failed")]
     EncryptionFailed,
     #[error("Decryption failed")]
-    DecryptionFailed,
+    DecryptionFailed(chacha20poly1305::Error),
     #[error("Invalid UTF-8")]
     InvalidUtf8,
     #[error("Data too short for magic tag and version")]
@@ -37,6 +37,14 @@ pub enum EntryError {
     DecompressionFailed,
     #[error("Failed to load private key")]
     LoadPrivateKey,
+    #[error("Chacha20Poly1305 error: {0}")]
+    Chacha20Poly1305(#[from] chacha20poly1305::Error),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("UTF-8 error: {0}")]
+    Utf8(#[from] std::string::FromUtf8Error),
+    #[error("Chacha20Poly1305 key length mismatch: {0}")]
+    ChachaKeylengthMismatch(#[from] sha2::digest::InvalidLength),
 }
 
 fn generate_keypair() -> (X448PrivateKey, X448PublicKey) {
@@ -88,7 +96,7 @@ fn encrypt(
     let nonce = chacha20poly1305::XNonce::generate();
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
-        .map_err(|_| EntryError::EncryptionFailed)?;
+        .map_err(|e| EntryError::Chacha20Poly1305(e))?;
 
     let mut result = Vec::with_capacity(56 + 24 + ciphertext.len());
     result.extend_from_slice(ephemeral_public.as_bytes());
@@ -109,17 +117,17 @@ fn decrypt(
 
     let ephemeral_public =
         X448PublicKey::from_bytes(&ciphertext[0..56]).ok_or(EntryError::InvalidPublicKey)?;
-    let nonce = XNonce::try_from(&ciphertext[56..80]).map_err(|_| EntryError::InvalidNonce)?;
+    let nonce = XNonce::try_from(&ciphertext[56..80]).expect("This should always work");
     let actual_ciphertext = &ciphertext[80..];
 
     let shared_secret = derive_shared_secret_later(long_term_private, &ephemeral_public, salt);
 
     let cipher = XChaCha20Poly1305::new_from_slice(&shared_secret)
-        .map_err(|_| EntryError::LoadPrivateKey)?;
+        .map_err(EntryError::ChachaKeylengthMismatch)?;
 
     let plaintext = cipher
         .decrypt(&nonce, actual_ciphertext)
-        .map_err(|_| EntryError::DecryptionFailed)?;
+        .map_err(EntryError::DecryptionFailed)?;
 
     Ok(plaintext)
 }
@@ -129,15 +137,13 @@ fn compress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
     std::io::BufReader::new(compress_reader)
         .bytes()
         .collect::<Result<Vec<u8>, _>>()
-        .map_err(|_| EntryError::CompressionFailed)
+        .map_err(EntryError::Io)
 }
 
 fn decompress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
     let mut input = brotli::Decompressor::new(input, 4096);
     let mut buf = Vec::new();
-    input
-        .read_to_end(&mut buf)
-        .map_err(|_| EntryError::DecompressionFailed)?;
+    input.read_to_end(&mut buf).map_err(EntryError::Io)?;
     Ok(buf)
 }
 
@@ -176,7 +182,7 @@ pub fn decode(
 
     let ciphertext = &data[7..];
     let plaintext = decrypt(long_term_private, ciphertext, salt)?;
-    String::from_utf8(decompress(&plaintext)?).map_err(|_| EntryError::InvalidUtf8)
+    String::from_utf8(decompress(&plaintext)?).map_err(EntryError::Utf8)
 }
 
 #[cfg(test)]
@@ -221,6 +227,6 @@ mod tests {
         let mut encoded = encode(&long_term_public, message, &salt).expect("Encoding failed");
         encoded[0] = 0x00; // Corrupt the magic tag
         let decoded = decode(long_term_private.as_bytes(), &encoded, &salt);
-        assert_eq!(decoded, Err(EntryError::InvalidMagicTag));
+        std::assert_matches!(decoded, Err(EntryError::InvalidMagicTag));
     }
 }

@@ -111,19 +111,31 @@ fn load_public_key() -> X448PublicKey {
     X448PublicKey::from_bytes(&key_bytes).expect("Invalid public key format")
 }
 
-fn load_private_key() -> [u8; 56] {
+fn load_private_key(salt: &SymmetricKey) -> [u8; 56] {
     let base_dir = get_base_dir();
     let key_path = base_dir.join("key.key");
     let key_bytes = fs::read(&key_path).expect("Failed to read private key");
+    
+    let password = get_password();
+    let encryption_key = derive_key_from_password(&password, salt);
+    
+    let cipher = XChaCha20Poly1305::new_from_slice(&encryption_key)
+        .expect("Failed to create cipher");
+    
+    let nonce = chacha20poly1305::XNonce::try_from(&key_bytes[..24]).expect("Invalid nonce");
+    let encrypted_data = &key_bytes[24..];
+    
+    let decrypted = cipher
+        .decrypt(&nonce, encrypted_data)
+        .expect("Failed to decrypt private key");
+    
     let mut private_key = [0u8; 56];
-    private_key.copy_from_slice(&key_bytes[..56]);
+    private_key.copy_from_slice(&decrypted[..56]);
     private_key
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let salt = load_symmetric_key();
-    let public_key = load_public_key();
 
     match cli.command {
         Commands::Init => {
@@ -159,151 +171,159 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("Initialized diaria in {}", base_dir.display());
         }
-        Commands::Add { input } => {
-            let entry_path = get_entry_path();
-            let input = if let Some(p) = input {
-                fs::read_to_string(p)?
-            } else {
-                Editor::new().edit("")?.unwrap_or_default()
-            };
-            let encoded = entry::version01::encode(&public_key, &input, &salt)?;
-            fs::write(&entry_path, encoded)?;
-            println!("Created entry: {}", entry_path.display());
-        }
-        Commands::Read { filename } => {
-            let entries_dir = get_entries_dir();
-            let entry_path = if let Some(f) = filename {
-                f
-            } else {
-                let entries = fs::read_dir(&entries_dir)?
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.path())
-                    .collect::<Vec<_>>();
+        _ => {
+            let salt = load_symmetric_key();
+            let public_key = load_public_key();
 
-                if entries.is_empty() {
-                    println!("No entries found in {}", entries_dir.display());
-                    return Ok(());
+            match cli.command {
+                Commands::Add { input } => {
+                    let entry_path = get_entry_path();
+                    let input = if let Some(p) = input {
+                        fs::read_to_string(p)?
+                    } else {
+                        Editor::new().edit("")?.unwrap_or_default()
+                    };
+                    let encoded = entry::version01::encode(&public_key, &input, &salt)?;
+                    fs::write(&entry_path, encoded)?;
+                    println!("Created entry: {}", entry_path.display());
                 }
+                Commands::Read { filename } => {
+                    let entries_dir = get_entries_dir();
+                    let entry_path = if let Some(f) = filename {
+                        f
+                    } else {
+                        let entries = fs::read_dir(&entries_dir)?
+                            .filter_map(|e| e.ok())
+                            .map(|e| e.path())
+                            .collect::<Vec<_>>();
 
-                let selection =
-                    FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
-                        .with_prompt("Select an entry")
-                        .items(entries.iter().map(|p| p.display()).collect::<Vec<_>>())
-                        .interact()?;
+                        if entries.is_empty() {
+                            println!("No entries found in {}", entries_dir.display());
+                            return Ok(());
+                        }
 
-                entries[selection].clone()
-            };
+                        let selection =
+                            FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                                .with_prompt("Select an entry")
+                                .items(entries.iter().map(|p| p.display()).collect::<Vec<_>>())
+                                .interact()?;
 
-            let private_key = load_private_key();
-            let data = fs::read(&entry_path)?;
-            let plaintext = decode(&private_key, &data, &salt)?;
-            println!("{}", plaintext);
-        }
-        Commands::Load { directory } => {
-            let entries_dir = get_entries_dir();
-            for entry in fs::read_dir(&directory)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_file() {
-                    let content = fs::read_to_string(&path)?;
-                    let encoded = entry::version01::encode(&public_key, &content, &salt)?;
-                    let dest_path = entries_dir.join(path.file_name().unwrap());
-                    fs::write(dest_path, encoded)?;
-                }
-            }
-            println!("Loaded entries from {}", directory.display());
-        }
-        Commands::Dump { directory } => {
-            let entries_dir = get_entries_dir();
-            let output_dir = directory.unwrap_or_else(|| PathBuf::from("./dump"));
-            fs::create_dir_all(&output_dir)?;
+                        entries[selection].clone()
+                    }                    ;
 
-            let private_key = load_private_key();
-            for entry in fs::read_dir(&entries_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "diaria") {
-                    let data = fs::read(&path)?;
+                    let private_key = load_private_key(&salt);
+                    let data = fs::read(&entry_path)?;
                     let plaintext = decode(&private_key, &data, &salt)?;
-                    let dest_path = output_dir.join(path.file_stem().unwrap());
-                    fs::write(dest_path, plaintext)?;
+                    println!("{}", plaintext);
                 }
-            }
-            println!("Dumped entries to {}", output_dir.display());
-        }
-        Commands::Sync => {
-            let entries_dir = get_entries_dir();
+                Commands::Load { directory } => {
+                    let entries_dir = get_entries_dir();
+                    for entry in fs::read_dir(&directory)? {
+                        let entry = entry?;
+                        let path = entry.path();
+                        if path.is_file() {
+                            let content = fs::read_to_string(&path)?;
+                            let encoded = entry::version01::encode(&public_key, &content, &salt)?;
+                            let dest_path = entries_dir.join(path.file_name().unwrap());
+                            fs::write(dest_path, encoded)?;
+                        }
+                    }
+                    println!("Loaded entries from {}", directory.display());
+                }
+                Commands::Dump { directory } => {
+                    let entries_dir = get_entries_dir();
+                    let output_dir = directory.unwrap_or_else(|| PathBuf::from("./dump"));
+                    fs::create_dir_all(&output_dir)?;
 
-            if !entries_dir.join(".git").exists() {
-                println!("Not a git repository: {}", entries_dir.display());
-                return Ok(());
-            }
+                    let private_key = load_private_key(&salt);
+                    for entry in fs::read_dir(&entries_dir)? {
+                        let entry = entry?;
+                        let path = entry.path();
+                        if path.extension().is_some_and(|ext| ext == "diaria") {
+                            let data = fs::read(&path)?;
+                            let plaintext = decode(&private_key, &data, &salt)?;
+                            let dest_path = output_dir.join(path.file_stem().unwrap());
+                            fs::write(dest_path, plaintext)?;
+                        }
+                    }
+                    println!("Dumped entries to {}", output_dir.display());
+                }
+                Commands::Sync => {
+                    let entries_dir = get_entries_dir();
 
-            Command::new("git")
-                .arg("-C")
-                .arg(&entries_dir)
-                .arg("add")
-                .arg("*.diaria")
-                .status()?;
+                    if !entries_dir.join(".git").exists() {
+                        println!("Not a git repository: {}", entries_dir.display());
+                        return Ok(());
+                    }
 
-            Command::new("git")
-                .arg("-C")
-                .arg(&entries_dir)
-                .arg("commit")
-                .arg("-m")
-                .arg("Auto-commit entries")
-                .status()?;
+                    Command::new("git")
+                        .arg("-C")
+                        .arg(&entries_dir)
+                        .arg("add")
+                        .arg("*.diaria")
+                        .status()?;
 
-            Command::new("git")
-                .arg("-C")
-                .arg(&entries_dir)
-                .arg("push")
-                .status()?;
+                    Command::new("git")
+                        .arg("-C")
+                        .arg(&entries_dir)
+                        .arg("commit")
+                        .arg("-m")
+                        .arg("Auto-commit entries")
+                        .status()?;
 
-            Command::new("git")
-                .arg("-C")
-                .arg(&entries_dir)
-                .arg("pull")
-                .status()?;
+                    Command::new("git")
+                        .arg("-C")
+                        .arg(&entries_dir)
+                        .arg("push")
+                        .status()?;
 
-            println!("Synced entries repository");
-        }
-        Commands::Summarize => {
-            let entries_dir = get_entries_dir();
-            let private_key = load_private_key();
-            let now = Local::now();
+                    Command::new("git")
+                        .arg("-C")
+                        .arg(&entries_dir)
+                        .arg("pull")
+                        .status()?;
 
-            let time_offsets = [
-                now - chrono::Duration::days(1),
-                now - chrono::Duration::days(7),
-                now - chrono::Duration::days(30),
-                now - chrono::Duration::days(365),
-                now - chrono::Duration::days(730),
-                now - chrono::Duration::days(1460),
-                now - chrono::Duration::days(2920),
-            ];
+                    println!("Synced entries repository");
+                }
+                Commands::Summarize => {
+                    let entries_dir = get_entries_dir();
+                    let private_key = load_private_key(&salt);
+                    let now = Local::now();
 
-            for offset in time_offsets {
-                let date_str = offset.format("%Y-%m-%d").to_string();
+                    let time_offsets = [
+                        now - chrono::Duration::days(1),
+                        now - chrono::Duration::days(7),
+                        now - chrono::Duration::days(30),
+                        now - chrono::Duration::days(365),
+                        now - chrono::Duration::days(730),
+                        now - chrono::Duration::days(1460),
+                        now - chrono::Duration::days(2920),
+                    ];
 
-                for entry in fs::read_dir(&entries_dir)? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if let Some(name) = path.file_name()
-                        && let Some(name_str) = name.to_str()
-                        && name_str.contains(&date_str)
-                    {
-                        let data = fs::read(&path)?;
-                        let plaintext = decode(&private_key, &data, &salt)?;
-                        println!("=== Entry from {} ===", date_str);
-                        println!("{}", plaintext);
-                        println!();
+                    for offset in time_offsets {
+                        let date_str = offset.format("%Y-%m-%d").to_string();
+
+                        for entry in fs::read_dir(&entries_dir)? {
+                            let entry = entry?;
+                            let path = entry.path();
+                            if let Some(name) = path.file_name()
+                                && let Some(name_str) = name.to_str()
+                                && name_str.contains(&date_str)
+                            {
+                                let data = fs::read(&path)?;
+                                let plaintext = decode(&private_key, &data, &salt)?;
+                                println!("=== Entry from {} ===", date_str);
+                                println!("{}", plaintext);
+                                println!();
+                            }
+                        }
                     }
                 }
+                Commands::Stats => {
+                    todo!()
+                }
+                Commands::Init => unreachable!(),
             }
-        }
-        Commands::Stats => {
-            todo!()
         }
     }
     Ok(())

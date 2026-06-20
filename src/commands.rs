@@ -1,4 +1,7 @@
-use crate::{CipherPrivateKey, entry::version01::{decode, encode, generate_keypair}};
+use crate::{
+    CipherPrivateKey,
+    entry::version01::{decode, encode, generate_keypair},
+};
 use chacha20poly1305::{
     XChaCha20Poly1305,
     aead::{Aead, Generate as _, KeyInit},
@@ -188,15 +191,9 @@ pub fn cmd_summarize() -> Result<(), Box<dyn std::error::Error>> {
     let private_key = load_private_key();
     let now = Local::now();
 
-    let time_offsets = [
-        now - chrono::Duration::days(1),
-        now - chrono::Duration::days(7),
-        now - chrono::Duration::days(30),
-        now - chrono::Duration::days(365),
-        now - chrono::Duration::days(730),
-        now - chrono::Duration::days(1460),
-        now - chrono::Duration::days(2920),
-    ];
+    let time_offsets = [1, 7, 30, 365, 365 * 2, 365 * 4, 365 * 8, 365 * 16]
+        .map(chrono::Duration::days)
+        .map(|x| now - x);
 
     for offset in time_offsets {
         let date_str = offset.format("%Y-%m-%d").to_string();

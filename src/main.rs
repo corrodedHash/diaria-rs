@@ -17,6 +17,9 @@ use xdg::BaseDirectories;
 
 mod commands;
 mod entry;
+mod file_loader;
+mod password;
+mod stdout_printer;
 
 use commands::*;
 
@@ -164,13 +167,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init => cmd_init(),
-        Commands::Add { input } => cmd_add(input),
-        Commands::Read { filename } => cmd_read(filename),
+        Commands::Init => CmdInit::default().execute(),
+        Commands::Add { input } => CmdAdd::default().execute(input.as_deref()),
+        Commands::Read { filename } => CmdRead::default().execute(filename.as_deref()),
         Commands::Load { directory } => cmd_load(directory),
         Commands::Dump { directory } => cmd_dump(directory),
         Commands::Sync => cmd_sync(),
         Commands::Summarize => cmd_summarize(),
-        Commands::Stats => cmd_stats(),
+        Commands::Stats => CmdStats::default().execute(),
     }
 }

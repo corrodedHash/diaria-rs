@@ -23,6 +23,11 @@ run = "cargo run --"
 description = "Run the test suite"
 run = "cargo test"
 
+[tasks.e2e]
+description = "Run the Python end-to-end tests against the debug binary"
+depends = ["build"]
+run = "DIARIA=\"$PWD/target/debug/diaria\" uv run --quiet --with pytest pytest end_to_end"
+
 [tasks.fmt]
 description = "Format the code"
 run = "cargo fmt --all"

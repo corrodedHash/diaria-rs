@@ -13,10 +13,15 @@ pub fn derive_key_from_password(password: &str, salt: &[u8; 32]) -> [u8; 32] {
         .hash_password(password.as_bytes(), &salt_string)
         .expect("Failed to hash password");
 
-    let hash_string = password_hash.to_string();
-    let hash_bytes = hash_string.as_bytes();
+    // Use the raw Argon2 hash *output* — the actual derived key material, which
+    // depends on the password. (Reading bytes off the PHC *string* instead would
+    // capture only its parameter/salt prefix, making the key independent of the
+    // password.) The default Argon2 output is exactly 32 bytes.
+    let hash = password_hash
+        .hash
+        .expect("Argon2 password hash always carries an output");
     let mut key = [0u8; 32];
-    key.copy_from_slice(&hash_bytes[..32]);
+    key.copy_from_slice(hash.as_bytes());
     key
 }
 

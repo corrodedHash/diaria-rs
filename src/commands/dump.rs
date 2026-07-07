@@ -30,7 +30,7 @@ impl Command {
         let output_dir = directory.unwrap_or_else(|| PathBuf::from("./dump"));
         fs::create_dir_all(&output_dir)?;
 
-        let private_key = self.key_manager.load_private_key();
+        let private_key = self.key_manager.load_private_key()?;
         for path in self.repository.list_entries() {
             if path.extension().is_some_and(|ext| ext == "diaria") {
                 let data = self.repository.read_entry(&path)?;

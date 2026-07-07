@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::{fs, path::Path};
 
-use chrono::Local;
+use chrono::{Local, TimeZone as _};
 use xdg::BaseDirectories;
 
 pub struct EntryMetadata {
@@ -76,11 +76,16 @@ impl DiariaEntryRepository for DiariaFsRepository {
                         let metadata = e.metadata().ok()?;
                         let binding = e.file_name();
                         let timestamp = binding.to_str()?.split('.').next()?;
-                        let timestamp =
-                            chrono::DateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S")
+                        // Entry filenames carry a local, offset-less timestamp
+                        // (`%Y-%m-%dT%H:%M:%S`), so parse it as a naive datetime
+                        // and anchor it to the local zone. Parsing straight to a
+                        // `DateTime` would demand an offset the name never has,
+                        // dropping every entry.
+                        let naive =
+                            chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S")
                                 .ok()?;
                         Some(EntryMetadata {
-                            timestamp: timestamp.with_timezone(&Local),
+                            timestamp: Local.from_local_datetime(&naive).single()?,
                             size: metadata.len(),
                         })
                     })

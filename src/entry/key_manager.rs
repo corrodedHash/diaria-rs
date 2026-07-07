@@ -10,7 +10,16 @@ use chacha20poly1305::{
 
 use super::version01::SymmetricKey;
 use crate::manifest::{Manifest, ManifestError};
+use thiserror::Error;
 use x448::PublicKey as X448PublicKey;
+
+/// Errors surfaced while loading key material from the vault.
+#[derive(Debug, Error)]
+pub enum KeyError {
+    /// The private key could not be decrypted — almost always a wrong password.
+    #[error("failed to decrypt the private key (wrong password?)")]
+    Decryption,
+}
 
 pub struct FsKeyManager {
     repo: Box<dyn DiariaMetaRepository>,
@@ -25,7 +34,7 @@ impl FsKeyManager {
 
 #[mockall::automock]
 pub trait DiariaKeyManager {
-    fn load_private_key(&self) -> [u8; 56];
+    fn load_private_key(&self) -> Result<[u8; 56], KeyError>;
     fn load_public_key(&self) -> X448PublicKey;
     fn load_symmetric_key(&self) -> SymmetricKey;
     /// Read and validate the vault's format version from its manifest.
@@ -59,7 +68,7 @@ impl DiariaKeyManager for FsKeyManager {
         Manifest::parse(&raw).map(|m| m.version)
     }
 
-    fn load_private_key(&self) -> [u8; 56] {
+    fn load_private_key(&self) -> Result<[u8; 56], KeyError> {
         let key_bytes = self.repo.fetch_private_key_raw().unwrap();
         let cipher_key = CipherPrivateKey::from(key_bytes.as_slice());
 
@@ -71,10 +80,10 @@ impl DiariaKeyManager for FsKeyManager {
 
         let decrypted = cipher
             .decrypt(&cipher_key.nonce, cipher_key.ciphertext.as_slice())
-            .expect("Failed to decrypt private key");
+            .map_err(|_| KeyError::Decryption)?;
 
         let mut private_key = [0u8; 56];
         private_key.copy_from_slice(&decrypted[..56]);
-        private_key
+        Ok(private_key)
     }
 }

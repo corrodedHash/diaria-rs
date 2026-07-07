@@ -3,6 +3,7 @@ use crate::commands::{
 };
 use crate::entry::key_manager::{DiariaKeyManager, FsKeyManager};
 use crate::entry::repository::{DiariaEntryRepository, DiariaFsRepository, DiariaMetaRepository};
+use crate::environment::{Environment, SystemEnvironment};
 use crate::file_loader::{FileLoader, RealFileLoader};
 use crate::password::{PasswordService, TerminalPasswordService};
 use crate::stdout_printer::{RealUserOutput, UserOutput};
@@ -21,8 +22,12 @@ impl Di {
         Box::new(DiariaFsRepository {})
     }
 
+    fn environment() -> Box<dyn Environment> {
+        Box::new(SystemEnvironment)
+    }
+
     fn password() -> Box<dyn PasswordService> {
-        Box::new(TerminalPasswordService {})
+        Box::new(TerminalPasswordService::new(Self::environment()))
     }
 
     fn user_output() -> Box<dyn UserOutput> {

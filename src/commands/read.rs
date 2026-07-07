@@ -46,7 +46,7 @@ impl Command {
         };
 
         let salt = self.key_manager.load_symmetric_key();
-        let private_key = self.key_manager.load_private_key();
+        let private_key = self.key_manager.load_private_key()?;
         let data = self.repository.read_entry(&entry_path)?;
         let plaintext = decode(&private_key, &data, &salt)?;
         self.user_output.print(&plaintext);

@@ -34,7 +34,13 @@ read -r reply
 sed -i '' -E "s/^version = \".*\"/version = \"$number\"/" Cargo.toml
 cargo check --quiet   # rewrite the version recorded in Cargo.lock
 git add Cargo.toml Cargo.lock
-git commit -m "chore(release): $version"
+# Only commit when the version actually moved. On the first release the tag is
+# seeded from Cargo.toml, so it may already match and there is nothing to commit.
+if git diff --cached --quiet; then
+  echo "Cargo.toml already at $number; tagging existing commit."
+else
+  git commit -m "chore(release): $version"
+fi
 git tag -a "$version" -m "Release $version"
 git push --follow-tags
 echo "Pushed $version — the release workflow will build and publish it."

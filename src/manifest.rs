@@ -31,9 +31,9 @@ impl Manifest {
         }
     }
 
-    pub fn to_toml(&self) -> String {
-        // Serializing a two-field struct to a documented format cannot fail.
-        toml::to_string(self).expect("manifest serialization is infallible")
+    pub fn to_toml(self) -> String {
+        // Serializing a one-field struct to a documented format cannot fail.
+        toml::to_string(&self).expect("manifest serialization is infallible")
     }
 
     /// Parse and validate raw manifest bytes, yielding the vault's version.

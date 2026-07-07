@@ -1,0 +1,35 @@
+# Task runner for diaria. The Rust toolchain itself is pinned via
+# rust-toolchain.toml (rustup-native), so mise here is purely tasks.
+# Run `mise tasks` to list, `mise run <task>` to execute.
+
+[tasks.build]
+description = "Build the debug binary"
+run = "cargo build"
+
+[tasks.release]
+description = "Build the optimized release binary"
+run = "cargo build --release"
+
+[tasks.run]
+description = "Run the CLI (pass args after --)"
+run = "cargo run --"
+
+[tasks.test]
+description = "Run the test suite"
+run = "cargo test"
+
+[tasks.fmt]
+description = "Format the code"
+run = "cargo fmt --all"
+
+[tasks.lint]
+description = "Run clippy with warnings as errors"
+run = "cargo clippy --all-targets --all-features -- -D warnings"
+
+[tasks.check]
+description = "Run everything CI runs: fmt check, clippy, tests"
+depends = ["fmt-check", "lint", "test"]
+
+[tasks.fmt-check]
+description = "Verify formatting without modifying files"
+run = "cargo fmt --all -- --check"

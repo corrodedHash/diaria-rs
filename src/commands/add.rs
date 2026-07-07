@@ -3,31 +3,33 @@ use std::path::Path;
 use dialoguer::Editor;
 
 use crate::{
-    entry::{
-        key_manager::{DiariaKeyManager, FsKeyManagerDefault},
-        repository::{DiariaEntryRepository, DiariaFsRepository},
-        version01::encode,
-    },
-    file_loader::{FileLoader, RealFileLoader},
+    entry::{key_manager::DiariaKeyManager, repository::DiariaEntryRepository, version01::encode},
+    file_loader::FileLoader,
+    stdout_printer::UserOutput,
 };
 
-pub struct Command<T: DiariaEntryRepository, KM: DiariaKeyManager, F: FileLoader> {
-    repository: T,
-    key_manager: KM,
-    file_loader: F,
+pub struct Command {
+    repository: Box<dyn DiariaEntryRepository>,
+    key_manager: Box<dyn DiariaKeyManager>,
+    file_loader: Box<dyn FileLoader>,
+    user_output: Box<dyn UserOutput>,
 }
 
-impl Default for Command<DiariaFsRepository, FsKeyManagerDefault, RealFileLoader> {
-    fn default() -> Self {
+impl Command {
+    pub fn new(
+        repository: Box<dyn DiariaEntryRepository>,
+        key_manager: Box<dyn DiariaKeyManager>,
+        file_loader: Box<dyn FileLoader>,
+        user_output: Box<dyn UserOutput>,
+    ) -> Self {
         Self {
-            repository: DiariaFsRepository {},
-            key_manager: FsKeyManagerDefault::default(),
-            file_loader: RealFileLoader,
+            repository,
+            key_manager,
+            file_loader,
+            user_output,
         }
     }
-}
 
-impl<T: DiariaEntryRepository, KM: DiariaKeyManager, F: FileLoader> Command<T, KM, F> {
     pub fn execute(&self, input: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
         let salt = self.key_manager.load_symmetric_key();
         let public_key = self.key_manager.load_public_key();
@@ -41,10 +43,7 @@ impl<T: DiariaEntryRepository, KM: DiariaKeyManager, F: FileLoader> Command<T, K
         let encoded = encode(&public_key, &input, &salt)?;
 
         let entry_id = self.repository.add_entry(&encoded)?;
-        println!("Created entry: {}", entry_id);
+        self.user_output.print(&format!("Created entry: {}", entry_id));
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {}

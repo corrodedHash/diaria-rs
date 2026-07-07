@@ -3,28 +3,19 @@ use chrono::{Datelike as _, Weekday};
 use colorgrad::{Color, Gradient as _};
 use dialoguer::console;
 
-use crate::entry::repository::{DiariaEntryRepository, DiariaFsRepository, EntryMetadata};
-use crate::stdout_printer::{RealUserOutput, UserOutput};
+use crate::entry::repository::{DiariaEntryRepository, EntryMetadata};
+use crate::stdout_printer::UserOutput;
 
-pub struct Command<T: DiariaEntryRepository, PRINT: UserOutput> {
-    repository: T,
-    stdout_printer: PRINT,
+pub struct Command {
+    repository: Box<dyn DiariaEntryRepository>,
+    user_output: Box<dyn UserOutput>,
 }
 
-impl<T: DiariaEntryRepository, PRINT: UserOutput> Command<T, PRINT> {
-    pub fn new(repository: T, stdout_printer: PRINT) -> Self {
+impl Command {
+    pub fn new(repository: Box<dyn DiariaEntryRepository>, user_output: Box<dyn UserOutput>) -> Self {
         Self {
             repository,
-            stdout_printer,
-        }
-    }
-}
-
-impl Default for Command<DiariaFsRepository, RealUserOutput> {
-    fn default() -> Self {
-        Self {
-            repository: DiariaFsRepository {},
-            stdout_printer: RealUserOutput {},
+            user_output,
         }
     }
 }
@@ -34,7 +25,7 @@ struct Year(u32);
 
 type YearWeekdayIndex = std::collections::HashMap<(Year, chrono::Weekday), [u32; 60]>;
 
-use chrono::{Datelike, NaiveDate};
+use chrono::NaiveDate;
 
 fn get_weekday_range(year: Year, target_weekday: chrono::Weekday) -> (u32, u32) {
     // Get their weekdays and the week of December 31
@@ -85,7 +76,6 @@ fn year_weekday_line(counts: &YearWeekdayIndex, year: Year, weekday: chrono::Wee
     let line = counts.get(&(year, weekday)).unwrap_or(&[0u32; 60]);
     let mut output = "".to_owned();
     let (min_kw, max_kw) = get_weekday_range(year, weekday);
-    const COLOR_ATLANTIS: Color = Color::from_rgba8(0x5a, 0xd5, 0x2d, 0x00);
     const COLOR_TITAN_WHITE: Color = Color::from_rgba8(0xe5, 0xe8, 0xff, 0x00);
     const COLOR_MELROSE: Color = Color::from_rgba8(0x91, 0x9b, 0xff, 0x00);
     const COLOR_TOREA_BAY: Color = Color::from_rgba8(0x13, 0x3a, 0x94, 0x00);
@@ -93,7 +83,6 @@ fn year_weekday_line(counts: &YearWeekdayIndex, year: Year, weekday: chrono::Wee
 
     let g = colorgrad::GradientBuilder::new()
         .colors(&[
-            // COLOR_ATLANTIS,
             COLOR_TITAN_WHITE,
             COLOR_MELROSE,
             COLOR_TOREA_BAY,
@@ -172,7 +161,7 @@ fn build_year_weekday_index(metadata: &[EntryMetadata]) -> YearWeekdayIndex {
     counts
 }
 
-impl<T: DiariaEntryRepository, PRINT: UserOutput> Command<T, PRINT> {
+impl Command {
     pub fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
         let metadata = self.repository.list_entry_metadata();
         if metadata.is_empty() {
@@ -200,7 +189,7 @@ impl<T: DiariaEntryRepository, PRINT: UserOutput> Command<T, PRINT> {
 
         console::set_colors_enabled(true);
         console::set_true_colors_enabled(true);
-        self.stdout_printer.print(&result);
+        self.user_output.print(&result);
 
         Ok(())
     }
@@ -220,7 +209,6 @@ mod tests {
         let mut repo = MockDiariaEntryRepository::new();
         let metadata = vec![
             EntryMetadata {
-                id: "1".to_string(),
                 timestamp: chrono::Local
                     .from_local_datetime(
                         &chrono::NaiveDateTime::parse_from_str(
@@ -233,7 +221,6 @@ mod tests {
                 size: 1024,
             },
             EntryMetadata {
-                id: "2".to_string(),
                 timestamp: chrono::Local
                     .from_local_datetime(
                         &chrono::NaiveDateTime::parse_from_str(
@@ -249,13 +236,10 @@ mod tests {
         repo.expect_list_entry_metadata()
             .return_once(move || metadata);
 
-        // let mut user_output = MockUserOutput::new();
-        // user_output
-        //     .expect_print()
-        //     .withf(|text| text.contains("  1"))
-        //     .return_const(());
+        let mut user_output = MockUserOutput::new();
+        user_output.expect_print().times(1).return_const(());
 
-        let command = Command::new(repo, RealUserOutput {});
+        let command = Command::new(Box::new(repo), Box::new(user_output));
         command.execute().expect("Failed to execute command");
     }
 }

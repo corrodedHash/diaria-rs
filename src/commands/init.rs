@@ -4,12 +4,10 @@ use chacha20poly1305::{
 };
 
 use crate::{
-    CipherPrivateKey, derive_key_from_password,
-    entry::{
-        repository::{DiariaFsRepository, DiariaMetaRepository},
-        version01::generate_keypair,
-    },
-    password::{self, PasswordService},
+    crypto::{CipherPrivateKey, derive_key_from_password},
+    entry::{repository::DiariaMetaRepository, version01::generate_keypair},
+    password::PasswordService,
+    stdout_printer::UserOutput,
 };
 
 fn generate_rand_keys<const T: usize>() -> [u8; T] {
@@ -18,21 +16,25 @@ fn generate_rand_keys<const T: usize>() -> [u8; T] {
     keys
 }
 
-pub struct Command<T: DiariaMetaRepository, PW: PasswordService> {
-    repo: T,
-    password: PW,
+pub struct Command {
+    repo: Box<dyn DiariaMetaRepository>,
+    password: Box<dyn PasswordService>,
+    user_output: Box<dyn UserOutput>,
 }
 
-impl Default for Command<DiariaFsRepository, password::TerminalPasswordService> {
-    fn default() -> Self {
+impl Command {
+    pub fn new(
+        repo: Box<dyn DiariaMetaRepository>,
+        password: Box<dyn PasswordService>,
+        user_output: Box<dyn UserOutput>,
+    ) -> Self {
         Self {
-            repo: DiariaFsRepository {},
-            password: password::TerminalPasswordService {},
+            repo,
+            password,
+            user_output,
         }
     }
-}
 
-impl<T: DiariaMetaRepository, PW: PasswordService> Command<T, PW> {
     pub fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.repo.create_structure();
 
@@ -61,10 +63,10 @@ impl<T: DiariaMetaRepository, PW: PasswordService> Command<T, PW> {
         self.repo.store_public_key_raw(public_key.as_bytes())?;
         self.repo.store_symmetric_key_raw(&symmetric_key)?;
 
-        println!(
+        self.user_output.print(&format!(
             "Initialized diaria in {}",
             self.repo.get_base_dir().display()
-        );
+        ));
         Ok(())
     }
 }

@@ -2,6 +2,7 @@ use std::path::Path;
 
 pub struct RealFileLoader;
 
+#[mockall::automock]
 pub trait FileLoader {
     fn load(&self, path: &Path) -> std::io::Result<String>;
 }

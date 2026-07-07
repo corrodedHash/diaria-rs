@@ -2,40 +2,28 @@ use std::path::Path;
 
 use dialoguer::FuzzySelect;
 
-use crate::entry::{
-    key_manager::{DiariaKeyManager, FsKeyManagerDefault},
-    repository::{DiariaEntryRepository, DiariaFsRepository},
-    version01::decode,
-};
-use crate::stdout_printer::{RealUserOutput, UserOutput};
+use crate::entry::{key_manager::DiariaKeyManager, repository::DiariaEntryRepository, version01::decode};
+use crate::stdout_printer::UserOutput;
 
-pub struct Command<T: DiariaEntryRepository, KM: DiariaKeyManager, PRINT: UserOutput> {
-    repository: T,
-    key_manager: KM,
-    stdout_printer: PRINT,
+pub struct Command {
+    repository: Box<dyn DiariaEntryRepository>,
+    key_manager: Box<dyn DiariaKeyManager>,
+    user_output: Box<dyn UserOutput>,
 }
 
-impl<T: DiariaEntryRepository, KM: DiariaKeyManager, PRINT: UserOutput> Command<T, KM, PRINT> {
-    pub fn new(repository: T, key_manager: KM, stdout_printer: PRINT) -> Self {
+impl Command {
+    pub fn new(
+        repository: Box<dyn DiariaEntryRepository>,
+        key_manager: Box<dyn DiariaKeyManager>,
+        user_output: Box<dyn UserOutput>,
+    ) -> Self {
         Self {
             repository,
             key_manager,
-            stdout_printer,
+            user_output,
         }
     }
-}
 
-impl Default for Command<DiariaFsRepository, FsKeyManagerDefault, RealUserOutput> {
-    fn default() -> Self {
-        Self {
-            repository: DiariaFsRepository {},
-            key_manager: FsKeyManagerDefault::default(),
-            stdout_printer: RealUserOutput {},
-        }
-    }
-}
-
-impl<T: DiariaEntryRepository, KM: DiariaKeyManager, PRINT: UserOutput> Command<T, KM, PRINT> {
     pub fn execute(&self, filename: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
         let entry_path = if let Some(f) = filename {
             f.to_path_buf()
@@ -43,7 +31,7 @@ impl<T: DiariaEntryRepository, KM: DiariaKeyManager, PRINT: UserOutput> Command<
             let entries = self.repository.list_entries();
 
             if entries.is_empty() {
-                self.stdout_printer.print("No entries found");
+                self.user_output.print("No entries found");
                 return Ok(());
             }
 
@@ -59,7 +47,7 @@ impl<T: DiariaEntryRepository, KM: DiariaKeyManager, PRINT: UserOutput> Command<
         let private_key = self.key_manager.load_private_key();
         let data = self.repository.read_entry(&entry_path)?;
         let plaintext = decode(&private_key, &data, &salt)?;
-        self.stdout_printer.print(&plaintext);
+        self.user_output.print(&plaintext);
         Ok(())
     }
 }
@@ -111,9 +99,13 @@ mod tests {
             .withf(|text| text == PLAINTEXT)
             .return_const(());
 
-        let key_manager = FsKeyManager::new(diaria_meta_repo, password_service);
-        Command::new(repo, key_manager, user_output_service)
-            .execute(Some(Path::new("testdata/entry1.diaria")))
-            .expect("Failed to execute command");
+        let key_manager = FsKeyManager::new(Box::new(diaria_meta_repo), Box::new(password_service));
+        Command::new(
+            Box::new(repo),
+            Box::new(key_manager),
+            Box::new(user_output_service),
+        )
+        .execute(Some(Path::new("testdata/entry1.diaria")))
+        .expect("Failed to execute command");
     }
 }

@@ -5,7 +5,6 @@ use chrono::Local;
 use xdg::BaseDirectories;
 
 pub struct EntryMetadata {
-    pub id: String,
     pub timestamp: chrono::DateTime<chrono::Local>,
     pub size: u64,
 }
@@ -14,8 +13,10 @@ pub struct EntryMetadata {
 pub trait DiariaEntryRepository {
     fn list_entries(&self) -> Vec<PathBuf>;
     fn list_entry_metadata(&self) -> Vec<EntryMetadata>;
+    /// Stores an entry under a generated timestamp id, returning that id.
     fn add_entry(&self, entry: &[u8]) -> Result<String, Box<dyn std::error::Error>>;
-    fn delete_entry(&self, entry_id: &str) -> Result<(), Box<dyn std::error::Error>>;
+    /// Stores an entry under an explicit file name (used when importing existing entries).
+    fn store_entry(&self, name: &str, entry: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
     fn read_entry(&self, entry_path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
 
@@ -50,12 +51,14 @@ impl DiariaEntryRepository for DiariaFsRepository {
 
     fn add_entry(&self, entry: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
         let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-
-        let base_dir = self.get_base_dir();
-        let entries_dir = base_dir.join("entries");
-        let entry_path = entries_dir.join(format!("{}.diaria", timestamp));
-        std::fs::write(&entry_path, entry)?;
+        self.store_entry(&format!("{}.diaria", timestamp), entry)?;
         Ok(timestamp)
+    }
+
+    fn store_entry(&self, name: &str, entry: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        let entry_path = self.get_base_dir().join("entries").join(name);
+        std::fs::write(&entry_path, entry)?;
+        Ok(())
     }
 
     fn list_entry_metadata(&self) -> Vec<EntryMetadata> {
@@ -73,7 +76,6 @@ impl DiariaEntryRepository for DiariaFsRepository {
                             chrono::DateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S")
                                 .ok()?;
                         Some(EntryMetadata {
-                            id: e.file_name().to_string_lossy().to_string(),
                             timestamp: timestamp.with_timezone(&Local),
                             size: metadata.len(),
                         })
@@ -81,10 +83,6 @@ impl DiariaEntryRepository for DiariaFsRepository {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()
-    }
-
-    fn delete_entry(&self, _entry_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
     }
 
     fn read_entry(&self, entry_path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {

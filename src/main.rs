@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 mod commands;
 mod crypto;
@@ -42,7 +43,17 @@ enum Commands {
     Stats,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> ExitCode {
+    if let Err(e) = run() {
+        // Print the error's `Display` (its human-facing message) rather than
+        // the `Debug` form the default `Termination` impl would use.
+        eprintln!("Error: {e}");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {

@@ -9,6 +9,7 @@ use crate::{
         repository::{DiariaFsRepository, DiariaMetaRepository},
         version01::generate_keypair,
     },
+    manifest::Manifest,
     password::{self, PasswordService},
 };
 
@@ -60,6 +61,8 @@ impl<T: DiariaMetaRepository, PW: PasswordService> Command<T, PW> {
         self.repo.store_private_key_raw(&cipher_key.serialize())?;
         self.repo.store_public_key_raw(public_key.as_bytes())?;
         self.repo.store_symmetric_key_raw(&symmetric_key)?;
+        self.repo
+            .store_manifest_raw(Manifest::current().to_toml().as_bytes())?;
 
         println!(
             "Initialized diaria in {}",

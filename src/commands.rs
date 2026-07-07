@@ -1,4 +1,4 @@
-use crate::entry::version01::{decode, encode};
+use crate::entry::{decode, encode};
 use chrono::Local;
 use std::fs;
 use std::path::PathBuf;

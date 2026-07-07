@@ -4,9 +4,9 @@ use dialoguer::Editor;
 
 use crate::{
     entry::{
+        encode,
         key_manager::{DiariaKeyManager, FsKeyManagerDefault},
         repository::{DiariaEntryRepository, DiariaFsRepository},
-        version01::encode,
     },
     file_loader::{FileLoader, RealFileLoader},
 };
@@ -29,6 +29,8 @@ impl Default for Command<DiariaFsRepository, FsKeyManagerDefault, RealFileLoader
 
 impl<T: DiariaEntryRepository, KM: DiariaKeyManager, F: FileLoader> Command<T, KM, F> {
     pub fn execute(&self, input: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+        self.key_manager.load_manifest_version()?;
+
         let salt = self.key_manager.load_symmetric_key();
         let public_key = self.key_manager.load_public_key();
 

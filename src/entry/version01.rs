@@ -8,8 +8,10 @@ use x448::{EphemeralSecret as X448PrivateKey, PublicKey as X448PublicKey, x448};
 
 pub type SymmetricKey = [u8; 32];
 
-const MAGIC_TAG: &[u8; 6] = b"DIARIA";
-const VERSION: u8 = 1;
+/// The version byte this module reads and writes. The envelope framing (magic
+/// tag + version dispatch) lives in [`super`]; this module owns only the v1
+/// body codec.
+pub const VERSION: u8 = 1;
 
 #[derive(Debug, Error)]
 pub enum EntryError {
@@ -19,12 +21,6 @@ pub enum EntryError {
     InvalidPublicKey,
     #[error("Decryption failed")]
     DecryptionFailed(chacha20poly1305::Error),
-    #[error("Data too short for magic tag and version")]
-    DataTooShort,
-    #[error("Invalid magic tag")]
-    InvalidMagicTag,
-    #[error("Unsupported version")]
-    UnsupportedVersion,
     #[error("Chacha20Poly1305 error: {0}")]
     Chacha20Poly1305(#[from] chacha20poly1305::Error),
     #[error("IO error: {0}")]
@@ -135,41 +131,25 @@ fn decompress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
     Ok(buf)
 }
 
-pub fn encode(
+/// Encode an entry body (no envelope header — the caller in [`super`] prepends
+/// the magic tag and version byte).
+pub fn encode_body(
     long_term_public: &X448PublicKey,
     plaintext: &str,
     salt: &SymmetricKey,
 ) -> Result<Vec<u8>, EntryError> {
     let compressed = compress(plaintext.as_bytes())?;
-    let encrypted = encrypt(long_term_public, &compressed, salt)?;
-
-    let mut result = Vec::with_capacity(6 + 1 + encrypted.len());
-    result.extend_from_slice(MAGIC_TAG);
-    result.push(VERSION);
-    result.extend_from_slice(&encrypted);
-
-    Ok(result)
+    encrypt(long_term_public, &compressed, salt)
 }
 
-pub fn decode(
+/// Decode an entry body (the envelope header has already been stripped and
+/// validated by [`super`]).
+pub fn decode_body(
     long_term_private: &[u8; 56],
-    data: &[u8],
+    body: &[u8],
     salt: &SymmetricKey,
 ) -> Result<String, EntryError> {
-    if data.len() < 7 {
-        return Err(EntryError::DataTooShort);
-    }
-
-    if &data[0..6] != MAGIC_TAG {
-        return Err(EntryError::InvalidMagicTag);
-    }
-
-    if data[6] != VERSION {
-        return Err(EntryError::UnsupportedVersion);
-    }
-
-    let ciphertext = &data[7..];
-    let plaintext = decrypt(long_term_private, ciphertext, salt)?;
+    let plaintext = decrypt(long_term_private, body, salt)?;
     String::from_utf8(decompress(&plaintext)?).map_err(EntryError::Utf8)
 }
 
@@ -197,24 +177,13 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_decode() {
+    fn test_encode_decode_body() {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = "Hello, this is a secret message!";
         let salt = [0u8; 32];
-        let encoded = encode(&long_term_public, message, &salt).expect("Encoding failed");
+        let encoded = encode_body(&long_term_public, message, &salt).expect("Encoding failed");
         let decoded =
-            decode(long_term_private.as_bytes(), &encoded, &salt).expect("Decoding failed");
+            decode_body(long_term_private.as_bytes(), &encoded, &salt).expect("Decoding failed");
         assert_eq!(message, decoded);
-    }
-
-    #[test]
-    fn test_decode_fails() {
-        let (long_term_private, long_term_public) = generate_keypair();
-        let message = "Hello, this is a secret message!";
-        let salt = [0u8; 32];
-        let mut encoded = encode(&long_term_public, message, &salt).expect("Encoding failed");
-        encoded[0] = 0x00; // Corrupt the magic tag
-        let decoded = decode(long_term_private.as_bytes(), &encoded, &salt);
-        std::assert_matches!(decoded, Err(EntryError::InvalidMagicTag));
     }
 }

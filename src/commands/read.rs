@@ -3,9 +3,9 @@ use std::path::Path;
 use dialoguer::FuzzySelect;
 
 use crate::entry::{
+    decode,
     key_manager::{DiariaKeyManager, FsKeyManagerDefault},
     repository::{DiariaEntryRepository, DiariaFsRepository},
-    version01::decode,
 };
 use crate::stdout_printer::{RealUserOutput, UserOutput};
 
@@ -37,6 +37,8 @@ impl Default for Command<DiariaFsRepository, FsKeyManagerDefault, RealUserOutput
 
 impl<T: DiariaEntryRepository, KM: DiariaKeyManager, PRINT: UserOutput> Command<T, KM, PRINT> {
     pub fn execute(&self, filename: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+        self.key_manager.load_manifest_version()?;
+
         let entry_path = if let Some(f) = filename {
             f.to_path_buf()
         } else {
@@ -81,6 +83,7 @@ mod tests {
     const SYMKEY: &[u8] = include_bytes!("testdata/key.sym");
     const PRIVATE_KEY: &[u8] = include_bytes!("testdata/key.key");
     const PUBLIC_KEY: &[u8] = include_bytes!("testdata/key.pub");
+    const MANIFEST: &[u8] = include_bytes!("testdata/manifest.toml");
     const PLAINTEXT: &str = "Hello";
 
     #[test]
@@ -99,6 +102,9 @@ mod tests {
         diaria_meta_repo
             .expect_fetch_symmetric_key_raw()
             .returning(|| Ok(SYMKEY.to_vec()));
+        diaria_meta_repo
+            .expect_fetch_manifest_raw()
+            .returning(|| Ok(Some(MANIFEST.to_vec())));
 
         let mut password_service = MockPasswordService::new();
         password_service
@@ -115,5 +121,31 @@ mod tests {
         Command::new(repo, key_manager, user_output_service)
             .execute(Some(Path::new("testdata/entry1.diaria")))
             .expect("Failed to execute command");
+    }
+
+    /// A vault with no manifest is a legacy "v0" vault and must be refused
+    /// before any decryption is attempted.
+    #[test]
+    fn test_legacy_vault_without_manifest_is_rejected() {
+        let repo = MockDiariaEntryRepository::new();
+
+        let mut diaria_meta_repo = MockDiariaMetaRepository::new();
+        diaria_meta_repo
+            .expect_fetch_manifest_raw()
+            .returning(|| Ok(None));
+
+        let password_service = MockPasswordService::new();
+        let user_output_service = MockUserOutput::new();
+
+        let key_manager = FsKeyManager::new(diaria_meta_repo, password_service);
+        let result = Command::new(repo, key_manager, user_output_service)
+            .execute(Some(Path::new("testdata/entry1.diaria")));
+
+        let err = result.expect_err("legacy vault should be rejected");
+        assert!(
+            err.downcast_ref::<crate::manifest::ManifestError>()
+                .is_some_and(|e| matches!(e, crate::manifest::ManifestError::LegacyUnversioned)),
+            "expected LegacyUnversioned, got: {err}"
+        );
     }
 }

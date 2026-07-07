@@ -18,6 +18,7 @@ use xdg::BaseDirectories;
 mod commands;
 mod entry;
 mod file_loader;
+mod manifest;
 mod password;
 mod stdout_printer;
 

@@ -1,6 +1,11 @@
 # Task runner for diaria. The Rust toolchain itself is pinned via
-# rust-toolchain.toml (rustup-native), so mise here is purely tasks.
+# rust-toolchain.toml (rustup-native); mise handles tasks plus a couple of
+# auxiliary dev tools (not the compiler).
 # Run `mise tasks` to list, `mise run <task>` to execute.
+
+[tools]
+# Used by the `changelog` task and mirrored by the release workflow.
+git-cliff = "latest"
 
 [tasks.build]
 description = "Build the debug binary"
@@ -33,3 +38,13 @@ depends = ["fmt-check", "lint", "test"]
 [tasks.fmt-check]
 description = "Verify formatting without modifying files"
 run = "cargo fmt --all -- --check"
+
+[tasks.changelog]
+description = "Preview the notes for the pending (unreleased) commits"
+run = "git cliff --unreleased"
+
+# Cut a release: bump version from commits, sync Cargo.toml, commit, tag, push.
+# The logic lives in tools/release-tag.sh; see there for details.
+[tasks.tag]
+description = "Bump version from commits, then tag + push to trigger a release"
+run = "./tools/release-tag.sh"

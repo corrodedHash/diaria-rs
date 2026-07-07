@@ -19,11 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Installs the toolchain pinned in rust-toolchain.toml, plus components.
+      # rust-toolchain.toml is the single source of truth for the version and
+      # the rustfmt/clippy components; rustup reads it. (rustup is preinstalled
+      # on the runner.)
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        run: rustup toolchain install
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2

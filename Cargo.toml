@@ -21,3 +21,7 @@ thiserror = "2.0"
 toml = "1.1.2"
 x448 = "0.14.0-pre.10"
 xdg = "3"
+
+[profile.release]
+# Strip symbols from release binaries — smaller artifacts, cross-target safe.
+strip = true

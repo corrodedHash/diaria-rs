@@ -1,4 +1,3 @@
-
 use chrono::{Datelike as _, Weekday};
 use colorgrad::{Color, Gradient as _};
 use dialoguer::console;
@@ -12,7 +11,10 @@ pub struct Command {
 }
 
 impl Command {
-    pub fn new(repository: Box<dyn DiariaEntryRepository>, user_output: Box<dyn UserOutput>) -> Self {
+    pub fn new(
+        repository: Box<dyn DiariaEntryRepository>,
+        user_output: Box<dyn UserOutput>,
+    ) -> Self {
         Self {
             repository,
             user_output,

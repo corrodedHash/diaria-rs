@@ -28,10 +28,14 @@ pub trait DiariaMetaRepository {
     fn store_private_key_raw(&self, key: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
     fn store_public_key_raw(&self, key: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
     fn store_symmetric_key_raw(&self, key: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
+    fn store_manifest_raw(&self, manifest: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
 
     fn fetch_private_key_raw(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
     fn fetch_public_key_raw(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
     fn fetch_symmetric_key_raw(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
+    /// Read the raw `manifest.toml` bytes, or `None` if the vault has no
+    /// manifest (a legacy, unversioned "v0" vault).
+    fn fetch_manifest_raw(&self) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>>;
 }
 pub struct DiariaFsRepository {}
 
@@ -118,6 +122,11 @@ impl DiariaMetaRepository for DiariaFsRepository {
         Ok(())
     }
 
+    fn store_manifest_raw(&self, manifest: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::write(self.get_base_dir().join("manifest.toml"), manifest)?;
+        Ok(())
+    }
+
     fn fetch_private_key_raw(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(std::fs::read(self.get_base_dir().join("key.key"))?)
     }
@@ -128,5 +137,13 @@ impl DiariaMetaRepository for DiariaFsRepository {
 
     fn fetch_symmetric_key_raw(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(std::fs::read(self.get_base_dir().join("key.sym"))?)
+    }
+
+    fn fetch_manifest_raw(&self) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
+        match std::fs::read(self.get_base_dir().join("manifest.toml")) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(Box::new(e)),
+        }
     }
 }

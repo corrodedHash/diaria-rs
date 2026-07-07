@@ -6,6 +6,7 @@ use chacha20poly1305::{
 use crate::{
     crypto::{CipherPrivateKey, derive_key_from_password},
     entry::{repository::DiariaMetaRepository, version01::generate_keypair},
+    manifest::Manifest,
     password::PasswordService,
     stdout_printer::UserOutput,
 };
@@ -62,6 +63,8 @@ impl Command {
         self.repo.store_private_key_raw(&cipher_key.serialize())?;
         self.repo.store_public_key_raw(public_key.as_bytes())?;
         self.repo.store_symmetric_key_raw(&symmetric_key)?;
+        self.repo
+            .store_manifest_raw(Manifest::current().to_toml().as_bytes())?;
 
         self.user_output.print(&format!(
             "Initialized diaria in {}",

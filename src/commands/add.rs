@@ -3,7 +3,7 @@ use std::path::Path;
 use dialoguer::Editor;
 
 use crate::{
-    entry::{key_manager::DiariaKeyManager, repository::DiariaEntryRepository, version01::encode},
+    entry::{encode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository},
     file_loader::FileLoader,
     stdout_printer::UserOutput,
 };
@@ -31,6 +31,8 @@ impl Command {
     }
 
     pub fn execute(&self, input: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+        self.key_manager.load_manifest_version()?;
+
         let salt = self.key_manager.load_symmetric_key();
         let public_key = self.key_manager.load_public_key();
 
@@ -43,7 +45,8 @@ impl Command {
         let encoded = encode(&public_key, &input, &salt)?;
 
         let entry_id = self.repository.add_entry(&encoded)?;
-        self.user_output.print(&format!("Created entry: {}", entry_id));
+        self.user_output
+            .print(&format!("Created entry: {}", entry_id));
         Ok(())
     }
 }

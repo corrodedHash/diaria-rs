@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::entry::{key_manager::DiariaKeyManager, repository::DiariaEntryRepository, version01::encode};
+use crate::entry::{encode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
 use crate::stdout_printer::UserOutput;
 
 pub struct Command {
@@ -24,6 +24,8 @@ impl Command {
     }
 
     pub fn execute(&self, directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        self.key_manager.load_manifest_version()?;
+
         let salt = self.key_manager.load_symmetric_key();
         let public_key = self.key_manager.load_public_key();
 

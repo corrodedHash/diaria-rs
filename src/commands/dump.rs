@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::entry::{key_manager::DiariaKeyManager, repository::DiariaEntryRepository, version01::decode};
+use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
 use crate::stdout_printer::UserOutput;
 
 pub struct Command {
@@ -24,6 +24,8 @@ impl Command {
     }
 
     pub fn execute(&self, directory: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+        self.key_manager.load_manifest_version()?;
+
         let salt = self.key_manager.load_symmetric_key();
         let output_dir = directory.unwrap_or_else(|| PathBuf::from("./dump"));
         fs::create_dir_all(&output_dir)?;

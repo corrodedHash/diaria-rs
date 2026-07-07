@@ -1,6 +1,6 @@
 use chrono::Local;
 
-use crate::entry::{key_manager::DiariaKeyManager, repository::DiariaEntryRepository, version01::decode};
+use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
 use crate::stdout_printer::UserOutput;
 
 pub struct Command {
@@ -23,6 +23,8 @@ impl Command {
     }
 
     pub fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
+        self.key_manager.load_manifest_version()?;
+
         let salt = self.key_manager.load_symmetric_key();
         let private_key = self.key_manager.load_private_key();
         let now = Local::now();

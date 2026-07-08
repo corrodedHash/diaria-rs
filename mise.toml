@@ -6,6 +6,7 @@
 [tools]
 # Used by the `changelog` task and mirrored by the release workflow.
 git-cliff = "latest"
+uv = 'latest'
 
 [tasks.build]
 description = "Build the debug binary"

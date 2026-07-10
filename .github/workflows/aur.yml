@@ -14,8 +14,8 @@ name: AUR
 #      repository named AUR_SSH_KEY (Settings → Secrets and variables → Actions).
 
 on:
-  push:
-    branches: [main]
+  # push:
+  #   branches: [main]
   workflow_dispatch:
 
 jobs:

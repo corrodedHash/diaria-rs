@@ -3,6 +3,7 @@ use crate::commands::{
 };
 use crate::entry::key_manager::{DiariaKeyManager, FsKeyManager};
 use crate::entry::repository::{DiariaEntryRepository, DiariaFsRepository, DiariaMetaRepository};
+use crate::util::dialogue_editor::{DialogueEditor, RealDialogueEditor};
 use crate::util::environment::{Environment, SystemEnvironment};
 use crate::util::file_loader::{FileLoader, RealFileLoader};
 use crate::util::password::{PasswordService, TerminalPasswordService};
@@ -38,6 +39,10 @@ impl Di {
         Box::new(RealFileLoader)
     }
 
+    fn dialogue_editor() -> Box<dyn DialogueEditor> {
+        Box::new(RealDialogueEditor)
+    }
+
     fn key_manager() -> Box<dyn DiariaKeyManager> {
         Box::new(FsKeyManager::new(Self::meta_repo(), Self::password()))
     }
@@ -51,6 +56,7 @@ impl Di {
             Self::entry_repo(),
             Self::key_manager(),
             Self::file_loader(),
+            Self::dialogue_editor(),
             Self::user_output(),
         )
     }

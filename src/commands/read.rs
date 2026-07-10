@@ -30,7 +30,12 @@ impl Command {
         let entry_path = if let Some(f) = filename {
             f.to_path_buf()
         } else {
-            let entries = self.repository.list_entries();
+            let entries = self
+                .repository
+                .list_entries()
+                .into_iter()
+                .filter(|p| p.extension().is_some_and(|ext| ext == "diaria"))
+                .collect::<Vec<_>>();
 
             if entries.is_empty() {
                 self.user_output.print("No entries found");
@@ -66,6 +71,7 @@ mod tests {
     };
 
     use super::*;
+    use std::path::PathBuf;
 
     const CIPHERTEXT: &[u8] = include_bytes!("testdata/entries/2026-06-21T16:50:46.diaria");
     const SYMKEY: &[u8] = include_bytes!("testdata/key.sym");
@@ -112,6 +118,45 @@ mod tests {
             Box::new(user_output_service),
         )
         .execute(Some(Path::new("testdata/entry1.diaria")))
+        .expect("Failed to execute command");
+    }
+
+    /// Non-`*.diaria` files (e.g. a `.git` directory under `entries/`) must be
+    /// filtered out. When everything is filtered out, "No entries found" is
+    /// printed and no selection prompt is shown.
+    #[test]
+    fn test_non_diaria_files_are_filtered_out() {
+        let mut repo = MockDiariaEntryRepository::new();
+        repo.expect_list_entries().returning(|| {
+            vec![
+                PathBuf::from("entries/.git"),
+                PathBuf::from("entries/.gitignore"),
+                PathBuf::from("entries/README.md"),
+            ]
+        });
+        repo.expect_read_entry()
+            .returning(|_| Err("read_entry must not be called when there are no entries".into()));
+
+        let mut diaria_meta_repo = MockDiariaMetaRepository::new();
+        diaria_meta_repo
+            .expect_fetch_manifest_raw()
+            .returning(|| Ok(Some(MANIFEST.to_vec())));
+
+        let password_service = MockPasswordService::new();
+
+        let mut user_output_service = MockUserOutput::new();
+        user_output_service
+            .expect_print()
+            .withf(|text| text == "No entries found")
+            .return_const(());
+
+        let key_manager = FsKeyManager::new(Box::new(diaria_meta_repo), Box::new(password_service));
+        Command::new(
+            Box::new(repo),
+            Box::new(key_manager),
+            Box::new(user_output_service),
+        )
+        .execute(None)
         .expect("Failed to execute command");
     }
 

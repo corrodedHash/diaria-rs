@@ -31,9 +31,9 @@ pub enum EntryError {
 pub fn encode(
     long_term_public: &X448PublicKey,
     plaintext: &str,
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> Result<Vec<u8>, EntryError> {
-    let body = version01::encode_body(long_term_public, plaintext, salt)?;
+    let body = version01::encode_body(long_term_public, plaintext, symmetric_key)?;
 
     let mut result = Vec::with_capacity(MAGIC_TAG.len() + 1 + body.len());
     result.extend_from_slice(MAGIC_TAG);
@@ -48,7 +48,7 @@ pub fn encode(
 pub fn decode(
     long_term_private: &[u8; 56],
     data: &[u8],
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> Result<Zeroizing<String>, EntryError> {
     if data.len() < MAGIC_TAG.len() + 1 {
         return Err(EntryError::DataTooShort);
@@ -62,7 +62,11 @@ pub fn decode(
     let body = &data[MAGIC_TAG.len() + 1..];
 
     match version {
-        version01::VERSION => Ok(version01::decode_body(long_term_private, body, salt)?),
+        version01::VERSION => Ok(version01::decode_body(
+            long_term_private,
+            body,
+            symmetric_key,
+        )?),
         other => Err(EntryError::UnsupportedVersion(other)),
     }
 }
@@ -75,18 +79,19 @@ mod tests {
     #[test]
     fn encode_decode_round_trips() {
         let (private_key, public_key) = generate_keypair();
-        let salt = [0u8; 32];
+        let symmetric_key = [0u8; 32];
         let message = "Hello, this is a secret message!";
-        let encoded = encode(&public_key, message, &salt).expect("Encoding failed");
-        let decoded = decode(private_key.as_bytes(), &encoded, &salt).expect("Decoding failed");
+        let encoded = encode(&public_key, message, &symmetric_key).expect("Encoding failed");
+        let decoded =
+            decode(private_key.as_bytes(), &encoded, &symmetric_key).expect("Decoding failed");
         assert_eq!(message, decoded.as_str());
     }
 
     #[test]
     fn encode_stamps_magic_and_version() {
         let (_, public_key) = generate_keypair();
-        let salt = [0u8; 32];
-        let encoded = encode(&public_key, "hi", &salt).expect("Encoding failed");
+        let symmetric_key = [0u8; 32];
+        let encoded = encode(&public_key, "hi", &symmetric_key).expect("Encoding failed");
         assert_eq!(&encoded[..MAGIC_TAG.len()], MAGIC_TAG);
         assert_eq!(encoded[MAGIC_TAG.len()], version01::VERSION);
     }
@@ -94,20 +99,20 @@ mod tests {
     #[test]
     fn decode_rejects_bad_magic() {
         let (private_key, public_key) = generate_keypair();
-        let salt = [0u8; 32];
-        let mut encoded = encode(&public_key, "hi", &salt).expect("Encoding failed");
+        let symmetric_key = [0u8; 32];
+        let mut encoded = encode(&public_key, "hi", &symmetric_key).expect("Encoding failed");
         encoded[0] = 0x00;
-        let decoded = decode(private_key.as_bytes(), &encoded, &salt);
+        let decoded = decode(private_key.as_bytes(), &encoded, &symmetric_key);
         std::assert_matches!(decoded, Err(EntryError::InvalidMagicTag));
     }
 
     #[test]
     fn decode_rejects_unknown_version() {
         let (private_key, public_key) = generate_keypair();
-        let salt = [0u8; 32];
-        let mut encoded = encode(&public_key, "hi", &salt).expect("Encoding failed");
+        let symmetric_key = [0u8; 32];
+        let mut encoded = encode(&public_key, "hi", &symmetric_key).expect("Encoding failed");
         encoded[MAGIC_TAG.len()] = 0xFF;
-        let decoded = decode(private_key.as_bytes(), &encoded, &salt);
+        let decoded = decode(private_key.as_bytes(), &encoded, &symmetric_key);
         std::assert_matches!(decoded, Err(EntryError::UnsupportedVersion(0xFF)));
     }
 }

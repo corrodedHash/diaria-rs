@@ -48,7 +48,11 @@ Entries are protected by two keys:
 - An **asymmetric** keypair encrypts entries. The public key is enough to write
   new entries, so adding an entry never needs your password. The private key —
   required to read entries back — is itself encrypted with your password.
-- A **symmetric** key is mixed into the entry format.
+- A **symmetric** key is mixed into the key derivation: it is concatenated with
+  the per-entry ephemeral Diffie-Hellman shared secret and fed into HKDF-SHA256
+  as input key material. It is a local secret (it never leaves the vault
+  directory and is not synced to git), so reading entries back requires both the
+  X448 private key *and* this symmetric key.
 
 Contents are compressed before encryption, and each entry is versioned on disk
 so the format can evolve.
@@ -56,6 +60,18 @@ so the format can evolve.
 Because entries are just encrypted files under your data directory, the whole
 diary can be kept in a git repository and synced across machines with
 `diaria sync`.
+
+### Security limitations
+
+- **No sender authentication.** Anyone with access to the vault directory's
+  `key.pub` and `key.sym` (both unencrypted) can author diary entries that
+  decrypt cleanly and are indistinguishable from yours — the XChaCha20Poly1305
+  tag only proves integrity, not authorship. This is a deliberate trade-off for
+  the "adding needs no password" UX. If you sync entries to an untrusted git
+  remote (a public repo, a shared server), a peer with write access can inject
+  forged entries. Keep the vault directory local and only sync the `entries/`
+  subtree to remotes you trust, or consider adding an out-of-band signature if
+  authorship matters to you.
 
 ## Development
 

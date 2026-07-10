@@ -115,16 +115,33 @@ version = new `versionNN.rs` module + a new `match` arm in `decode()`. Do not
 mutate existing version codecs.
 
 `src/entry/version01.rs` is the v1 body: ephemeral X448 keypair → HKDF-SHA256
-→ XChaCha20Poly1305, with brotli compression before encryption. Body layout:
-`ephemeral_pub(56) || nonce(24) || ciphertext`.
+→ XChaCha20Poly1305, with brotli compression before encryption. The HKDF input
+key material is the ephemeral X448 shared secret concatenated with the
+per-vault symmetric key (a local secret), with a fixed domain-separation salt.
+Body layout: `ephemeral_pub(56) || nonce(24) || ciphertext`.
 
 ### Keys
 
-`init` generates an X448 keypair, a 32-byte symmetric salt, and an Argon2
-salt; the private key is encrypted with a key derived from the password
+`init` generates an X448 keypair, a 32-byte symmetric key (`key.sym`), and an
+Argon2 salt; the private key is encrypted with a key derived from the password
 (`src/crypto.rs::derive_key_from_password`). Reading entries needs the
 password (to decrypt the private key); **adding** entries only needs the public
-key + symmetric salt, so `add` never prompts for a password.
+key + `key.sym`, so `add` never prompts for a password.
+
+`key.sym` is a local secret folded into the HKDF *input key material* (not the
+salt), so breaking X448 alone is not enough to recover an entry's AEAD key.
+It must not be synced to remotes; only the `entries/` subtree is synced (via
+`diaria sync`), which keeps `key.sym` local.
+
+### Security limitations
+
+- **No sender authentication.** The XChaCha20Poly1305 tag proves integrity, not
+  authorship. Anyone with `key.pub` + `key.sym` (both unencrypted in the vault
+  dir) can author entries that decrypt cleanly and look authentic. This is a
+  deliberate trade-off for "add needs no password." For sync to untrusted git
+  remotes, this means a peer with write access can inject forged entries.
+  Documenting, not patching: closing it would require signing entries with the
+  long-term private key, which makes `add` need the password.
 
 ## Testing
 

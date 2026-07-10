@@ -14,6 +14,14 @@ pub type SymmetricKey = [u8; 32];
 /// body codec.
 pub const VERSION: u8 = 1;
 
+/// Fixed HKDF salt for domain separation. The per-vault symmetric key is mixed
+/// into the HKDF input key material (see [`derive_aead_key`]) so it acts as a
+/// local secret on top of X448, not as a public salt.
+const HKDF_SALT: &[u8] = b"diaria-v1-entry";
+
+/// HKDF info string binding the derived key to its single use.
+const HKDF_INFO: &[u8] = b"diaria entry AEAD key";
+
 #[derive(Debug, Error)]
 pub enum EntryError {
     #[error("Ciphertext too short")]
@@ -38,44 +46,50 @@ pub fn generate_keypair() -> (X448PrivateKey, X448PublicKey) {
     (private_key, public_key)
 }
 
+/// Derive the per-entry AEAD key: HKDF-SHA256 over the X448 shared secret
+/// concatenated with the per-vault symmetric key. The symmetric key is secret
+/// (it never leaves the local vault dir), so it is input key material here —
+/// not a public salt. Breaking X448 alone is not enough to recover this key.
+fn derive_aead_key(shared_secret: &[u8], symmetric_key: &SymmetricKey) -> chacha20poly1305::Key {
+    let mut ikm = Vec::with_capacity(shared_secret.len() + symmetric_key.len());
+    ikm.extend_from_slice(shared_secret);
+    ikm.extend_from_slice(symmetric_key);
+
+    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(HKDF_SALT), &ikm);
+    let mut okm = chacha20poly1305::Key::default();
+    hk.expand(HKDF_INFO, &mut okm)
+        .expect("32 is a valid length for Sha256 to output");
+
+    okm
+}
+
 fn derive_shared_secret_initial(
     private_key: &X448PrivateKey,
     peer_public_key: &X448PublicKey,
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> chacha20poly1305::Key {
-    let ikm = private_key.diffie_hellman(peer_public_key);
-
-    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(salt), ikm.as_bytes());
-    let mut okm = chacha20poly1305::Key::default();
-    hk.expand(b"diaria entry shared secret", &mut okm)
-        .expect("42 is a valid length for Sha256 to output");
-
-    okm
+    let shared = private_key.diffie_hellman(peer_public_key);
+    derive_aead_key(shared.as_bytes(), symmetric_key)
 }
 
 fn derive_shared_secret_later(
     private_key: &[u8; 56],
     peer_public_key: &X448PublicKey,
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> chacha20poly1305::Key {
-    let ikm =
+    let shared =
         x448(*private_key, *peer_public_key.as_bytes()).expect("Failed to compute shared secret");
-
-    let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(salt), &ikm);
-    let mut okm = chacha20poly1305::Key::default();
-    hk.expand(b"diaria entry shared secret", &mut okm)
-        .expect("42 is a valid length for Sha256 to output");
-
-    okm
+    derive_aead_key(&shared, symmetric_key)
 }
 
 fn encrypt(
     long_term_public: &X448PublicKey,
     plaintext: &[u8],
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> Result<Vec<u8>, EntryError> {
     let (ephemeral_private, ephemeral_public) = generate_keypair();
-    let shared_secret = derive_shared_secret_initial(&ephemeral_private, long_term_public, salt);
+    let shared_secret =
+        derive_shared_secret_initial(&ephemeral_private, long_term_public, symmetric_key);
 
     let cipher = XChaCha20Poly1305::new(&shared_secret);
     let nonce = chacha20poly1305::XNonce::generate();
@@ -94,7 +108,7 @@ fn encrypt(
 fn decrypt(
     long_term_private: &[u8; 56],
     ciphertext: &[u8],
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> Result<Zeroizing<Vec<u8>>, EntryError> {
     if ciphertext.len() < 80 {
         return Err(EntryError::CiphertextTooShort);
@@ -105,7 +119,8 @@ fn decrypt(
     let nonce = XNonce::try_from(&ciphertext[56..80]).expect("This should always work");
     let actual_ciphertext = &ciphertext[80..];
 
-    let shared_secret = derive_shared_secret_later(long_term_private, &ephemeral_public, salt);
+    let shared_secret =
+        derive_shared_secret_later(long_term_private, &ephemeral_public, symmetric_key);
 
     let cipher = XChaCha20Poly1305::new_from_slice(&shared_secret)
         .map_err(EntryError::ChachaKeylengthMismatch)?;
@@ -140,10 +155,10 @@ fn decompress(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, EntryError> {
 pub fn encode_body(
     long_term_public: &X448PublicKey,
     plaintext: &str,
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> Result<Vec<u8>, EntryError> {
     let compressed = compress(plaintext.as_bytes())?;
-    encrypt(long_term_public, &compressed, salt)
+    encrypt(long_term_public, &compressed, symmetric_key)
 }
 
 /// Decode an entry body (the envelope header has already been stripped and
@@ -151,9 +166,9 @@ pub fn encode_body(
 pub fn decode_body(
     long_term_private: &[u8; 56],
     body: &[u8],
-    salt: &SymmetricKey,
+    symmetric_key: &SymmetricKey,
 ) -> Result<Zeroizing<String>, EntryError> {
-    let plaintext = decrypt(long_term_private, body, salt)?;
+    let plaintext = decrypt(long_term_private, body, symmetric_key)?;
     let mut decompressed = decompress(&plaintext)?;
     let raw = std::mem::take(&mut *decompressed);
     Ok(Zeroizing::from(
@@ -169,10 +184,11 @@ mod tests {
     fn test_encrypt_decrypt() {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = Vec::from(b"Hello, this is a secret message!");
-        let salt = [0u8; 32];
-        let encrypted = encrypt(&long_term_public, &message, &salt).expect("Encryption failed");
-        let decrypted =
-            decrypt(long_term_private.as_bytes(), &encrypted, &salt).expect("Decryption failed");
+        let symmetric_key = [0u8; 32];
+        let encrypted =
+            encrypt(&long_term_public, &message, &symmetric_key).expect("Encryption failed");
+        let decrypted = decrypt(long_term_private.as_bytes(), &encrypted, &symmetric_key)
+            .expect("Decryption failed");
         assert_eq!(message.as_slice(), decrypted.as_slice());
     }
 
@@ -188,10 +204,11 @@ mod tests {
     fn test_encode_decode_body() {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = "Hello, this is a secret message!";
-        let salt = [0u8; 32];
-        let encoded = encode_body(&long_term_public, message, &salt).expect("Encoding failed");
-        let decoded =
-            decode_body(long_term_private.as_bytes(), &encoded, &salt).expect("Decoding failed");
+        let symmetric_key = [0u8; 32];
+        let encoded =
+            encode_body(&long_term_public, message, &symmetric_key).expect("Encoding failed");
+        let decoded = decode_body(long_term_private.as_bytes(), &encoded, &symmetric_key)
+            .expect("Decoding failed");
         assert_eq!(message, decoded.as_str());
     }
 }

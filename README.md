@@ -13,6 +13,19 @@ binary:
 cargo install --path .
 ```
 
+### Arch Linux
+
+A VCS package is published on the AUR as [`diaria-rs-git`](https://aur.archlinux.org/packages/diaria-rs-git),
+kept in sync with `main` by the `.github/workflows/aur.yml` workflow. Install
+with your AUR helper:
+
+```sh
+paru -S diaria-rs-git   # or: yay -S diaria-rs-git
+```
+
+The PKGBUILD template lives in `dist/aur/`; see there and the workflow file for
+the one-time AUR/SSH-key setup the maintainer needs.
+
 Set up your diary — this generates your keys and asks for a password:
 
 ```sh

@@ -5,6 +5,7 @@ use chacha20poly1305::{
 use std::io::Read;
 use thiserror::Error;
 use x448::{EphemeralSecret as X448PrivateKey, PublicKey as X448PublicKey, x448};
+use zeroize::Zeroizing;
 
 pub type SymmetricKey = [u8; 32];
 
@@ -94,7 +95,7 @@ fn decrypt(
     long_term_private: &[u8; 56],
     ciphertext: &[u8],
     salt: &SymmetricKey,
-) -> Result<Vec<u8>, EntryError> {
+) -> Result<Zeroizing<Vec<u8>>, EntryError> {
     if ciphertext.len() < 80 {
         return Err(EntryError::CiphertextTooShort);
     }
@@ -109,26 +110,29 @@ fn decrypt(
     let cipher = XChaCha20Poly1305::new_from_slice(&shared_secret)
         .map_err(EntryError::ChachaKeylengthMismatch)?;
 
-    let plaintext = cipher
-        .decrypt(&nonce, actual_ciphertext)
-        .map_err(EntryError::DecryptionFailed)?;
+    let plaintext = Zeroizing::new(
+        cipher
+            .decrypt(&nonce, actual_ciphertext)
+            .map_err(EntryError::DecryptionFailed)?,
+    );
 
     Ok(plaintext)
 }
 
-fn compress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
+fn compress(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, EntryError> {
     let compress_reader = brotli::CompressorReader::new(input, 4096, 11, 22);
-    std::io::BufReader::new(compress_reader)
+    let buf: Vec<u8> = std::io::BufReader::new(compress_reader)
         .bytes()
         .collect::<Result<Vec<u8>, _>>()
-        .map_err(EntryError::Io)
+        .map_err(EntryError::Io)?;
+    Ok(Zeroizing::new(buf))
 }
 
-fn decompress(input: &[u8]) -> Result<Vec<u8>, EntryError> {
+fn decompress(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, EntryError> {
     let mut input = brotli::Decompressor::new(input, 4096);
     let mut buf = Vec::new();
     input.read_to_end(&mut buf).map_err(EntryError::Io)?;
-    Ok(buf)
+    Ok(Zeroizing::new(buf))
 }
 
 /// Encode an entry body (no envelope header — the caller in [`super`] prepends
@@ -148,9 +152,13 @@ pub fn decode_body(
     long_term_private: &[u8; 56],
     body: &[u8],
     salt: &SymmetricKey,
-) -> Result<String, EntryError> {
+) -> Result<Zeroizing<String>, EntryError> {
     let plaintext = decrypt(long_term_private, body, salt)?;
-    String::from_utf8(decompress(&plaintext)?).map_err(EntryError::Utf8)
+    let mut decompressed = decompress(&plaintext)?;
+    let raw = std::mem::take(&mut *decompressed);
+    Ok(Zeroizing::from(
+        String::from_utf8(raw).map_err(EntryError::Utf8)?,
+    ))
 }
 
 #[cfg(test)]
@@ -165,7 +173,7 @@ mod tests {
         let encrypted = encrypt(&long_term_public, &message, &salt).expect("Encryption failed");
         let decrypted =
             decrypt(long_term_private.as_bytes(), &encrypted, &salt).expect("Decryption failed");
-        assert_eq!(message, decrypted);
+        assert_eq!(message.as_slice(), decrypted.as_slice());
     }
 
     #[test]
@@ -173,7 +181,7 @@ mod tests {
         let message = Vec::from(b"Hello, this is a secret message!");
         let compressed = compress(&message).expect("Compression failed");
         let decompressed = decompress(&compressed).expect("Decompression failed");
-        assert_eq!(message, decompressed);
+        assert_eq!(message.as_slice(), decompressed.as_slice());
     }
 
     #[test]
@@ -184,6 +192,6 @@ mod tests {
         let encoded = encode_body(&long_term_public, message, &salt).expect("Encoding failed");
         let decoded =
             decode_body(long_term_private.as_bytes(), &encoded, &salt).expect("Decoding failed");
-        assert_eq!(message, decoded);
+        assert_eq!(message, decoded.as_str());
     }
 }

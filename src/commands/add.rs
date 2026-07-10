@@ -2,6 +2,7 @@ use std::path::Path;
 
 use dialoguer::Editor;
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 use crate::{
     entry::{encode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository},
@@ -41,10 +42,10 @@ impl Command {
     pub fn execute(&self, input: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
         self.key_manager.load_manifest_version()?;
 
-        let input = if let Some(p) = input {
+        let input: Zeroizing<String> = if let Some(p) = input {
             self.file_loader.load(p)?
         } else {
-            Editor::new().edit("")?.unwrap_or_default()
+            Zeroizing::from(Editor::new().edit("")?.unwrap_or_default())
         };
 
         // Reject empty or whitespace-only entries before doing any crypto, so we
@@ -83,7 +84,7 @@ mod tests {
         let mut file_loader = MockFileLoader::new();
         file_loader
             .expect_load()
-            .returning(|_| Ok(" \t\r\n".to_string()));
+            .returning(|_| Ok(Zeroizing::from(" \t\r\n".to_string())));
 
         // No entry may be stored and nothing may be printed for an empty entry;
         // leaving these mocks without expectations makes any such call fail.

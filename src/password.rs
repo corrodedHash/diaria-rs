@@ -1,4 +1,5 @@
 use dialoguer::Password;
+use zeroize::Zeroizing;
 
 use crate::environment::Environment;
 
@@ -19,18 +20,20 @@ impl TerminalPasswordService {
 
 #[mockall::automock]
 pub trait PasswordService {
-    fn get_password(&self) -> String;
+    fn get_password(&self) -> Zeroizing<String>;
 }
 
 impl PasswordService for TerminalPasswordService {
-    fn get_password(&self) -> String {
+    fn get_password(&self) -> Zeroizing<String> {
         if let Some(password) = self.environment.get(PASSWORD_ENV) {
-            return password;
+            return Zeroizing::from(password);
         }
-        Password::new()
-            .with_prompt("Enter encryption password")
-            .interact()
-            .expect("Failed to read password")
+        Zeroizing::from(
+            Password::new()
+                .with_prompt("Enter encryption password")
+                .interact()
+                .expect("Failed to read password"),
+        )
     }
 }
 
@@ -47,6 +50,6 @@ mod tests {
             .return_const(Some("s3cret".to_string()));
 
         let service = TerminalPasswordService::new(Box::new(env));
-        assert_eq!(service.get_password(), "s3cret");
+        assert_eq!(service.get_password().as_str(), "s3cret");
     }
 }

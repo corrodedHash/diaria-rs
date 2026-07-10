@@ -6,6 +6,7 @@ pub mod version01;
 use thiserror::Error;
 use version01::SymmetricKey;
 use x448::PublicKey as X448PublicKey;
+use zeroize::Zeroizing;
 
 /// Every entry file begins with this tag, so an entry is self-identifying even
 /// when handled outside a vault.
@@ -48,7 +49,7 @@ pub fn decode(
     long_term_private: &[u8; 56],
     data: &[u8],
     salt: &SymmetricKey,
-) -> Result<String, EntryError> {
+) -> Result<Zeroizing<String>, EntryError> {
     if data.len() < MAGIC_TAG.len() + 1 {
         return Err(EntryError::DataTooShort);
     }
@@ -78,7 +79,7 @@ mod tests {
         let message = "Hello, this is a secret message!";
         let encoded = encode(&public_key, message, &salt).expect("Encoding failed");
         let decoded = decode(private_key.as_bytes(), &encoded, &salt).expect("Decoding failed");
-        assert_eq!(message, decoded);
+        assert_eq!(message, decoded.as_str());
     }
 
     #[test]

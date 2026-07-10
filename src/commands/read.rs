@@ -103,7 +103,7 @@ mod tests {
         let mut password_service = MockPasswordService::new();
         password_service
             .expect_get_password()
-            .return_const("test".to_string());
+            .return_const(zeroize::Zeroizing::from("test".to_string()));
 
         let mut user_output_service = MockUserOutput::new();
         user_output_service

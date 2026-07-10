@@ -456,6 +456,7 @@ dependencies = [
  "toml",
  "x448",
  "xdg",
+ "zeroize",
 ]
 
 [[package]]

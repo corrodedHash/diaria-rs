@@ -7,6 +7,7 @@ use chacha20poly1305::{
     XChaCha20Poly1305,
     aead::{Aead, KeyInit},
 };
+use zeroize::Zeroizing;
 
 use super::version01::SymmetricKey;
 use crate::manifest::{Manifest, ManifestError};
@@ -34,7 +35,7 @@ impl FsKeyManager {
 
 #[mockall::automock]
 pub trait DiariaKeyManager {
-    fn load_private_key(&self) -> Result<[u8; 56], KeyError>;
+    fn load_private_key(&self) -> Result<Zeroizing<[u8; 56]>, KeyError>;
     fn load_public_key(&self) -> X448PublicKey;
     fn load_symmetric_key(&self) -> SymmetricKey;
     /// Read and validate the vault's format version from its manifest.
@@ -68,7 +69,7 @@ impl DiariaKeyManager for FsKeyManager {
         Manifest::parse(&raw).map(|m| m.version)
     }
 
-    fn load_private_key(&self) -> Result<[u8; 56], KeyError> {
+    fn load_private_key(&self) -> Result<Zeroizing<[u8; 56]>, KeyError> {
         let key_bytes = self.repo.fetch_private_key_raw().unwrap();
         let cipher_key = CipherPrivateKey::from(key_bytes.as_slice());
 
@@ -76,13 +77,15 @@ impl DiariaKeyManager for FsKeyManager {
         let encryption_key = derive_key_from_password(&password, &cipher_key.salt);
 
         let cipher =
-            XChaCha20Poly1305::new_from_slice(&encryption_key).expect("Failed to create cipher");
+            XChaCha20Poly1305::new_from_slice(&*encryption_key).expect("Failed to create cipher");
 
-        let decrypted = cipher
-            .decrypt(&cipher_key.nonce, cipher_key.ciphertext.as_slice())
-            .map_err(|_| KeyError::Decryption)?;
+        let decrypted = Zeroizing::new(
+            cipher
+                .decrypt(&cipher_key.nonce, cipher_key.ciphertext.as_slice())
+                .map_err(|_| KeyError::Decryption)?,
+        );
 
-        let mut private_key = [0u8; 56];
+        let mut private_key = Zeroizing::new([0u8; 56]);
         private_key.copy_from_slice(&decrypted[..56]);
         Ok(private_key)
     }

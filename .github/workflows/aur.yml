@@ -1,0 +1,78 @@
+name: AUR
+
+# Publishes the `diaria-rs-git` VCS package to the Arch User Repository whenever
+# main moves. The PKGBUILD template lives in dist/aur; the workflow bakes in the
+# freshly-computed pkgver, regenerates .SRCINFO (needs makepkg, hence the
+# archlinux container), then pushes PKGBUILD + .SRCINFO to the AUR git repo.
+#
+# One-time prerequisites (manual):
+#   1. Create the empty package at https://aur.archlinux.org/pkgbuild/new/
+#      named "diaria-rs-git". This provisions ssh://aur@aur.archlinux.org/diaria-rs-git.git.
+#   2. Generate a dedicated SSH keypair (`ssh-keygen -t ed25519 -f aur_key`).
+#   3. Add the PUBLIC key under your AUR account → "SSH Public Keys".
+#   4. Add the PRIVATE key (aur_key contents) as a GitHub Actions secret in this
+#      repository named AUR_SSH_KEY (Settings → Secrets and variables → Actions).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: publish diaria-rs-git
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git openssh sudo nodejs
+
+      # makepkg refuses to run as root; run only the .SRCINFO step as builder.
+      - name: Create unprivileged builder user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Allow git in workspace (dubious-ownership workaround)
+        run: git config --global --add safe.directory '*'
+
+      - name: Hand the workspace to the builder
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Configure AUR SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          ssh-keyscan -t rsa,ecdsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          printf 'Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur_key\n  IdentitiesOnly yes\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Bake git-derived pkgver into PKGBUILD
+        working-directory: dist/aur
+        run: |
+          count=$(git rev-list --count HEAD)
+          short=$(git rev-parse --short HEAD)
+          sed -i "s/^pkgver=.*/pkgver=r${count}.${short}/" PKGBUILD
+          echo "Publishing diaria-rs-git r${count}.${short}"
+
+      - name: Regenerate .SRCINFO
+        working-directory: dist/aur
+        run: sudo -u builder bash -c "cd '$GITHUB_WORKSPACE/dist/aur' && makepkg --printsrcinfo > .SRCINFO"
+
+      - name: Push to AUR
+        run: |
+          git clone "ssh://aur@aur.archlinux.org/diaria-rs-git.git" aur-repo
+          cp dist/aur/PKGBUILD dist/aur/.SRCINFO aur-repo/
+          cd aur-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update diaria-rs-git from upstream $(echo "$GITHUB_SHA" | cut -c1-7)" || echo "no changes to publish"
+          git push origin master

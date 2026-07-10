@@ -48,7 +48,7 @@ impl Command {
         let encryption_key = derive_key_from_password(&password, &argon2_salt);
 
         let cipher =
-            XChaCha20Poly1305::new_from_slice(&encryption_key).expect("Failed to create cipher");
+            XChaCha20Poly1305::new_from_slice(&*encryption_key).expect("Failed to create cipher");
         let nonce = chacha20poly1305::XNonce::generate();
         let encrypted_private_key = cipher
             .encrypt(&nonce, &private_key.as_bytes()[..])

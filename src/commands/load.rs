@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use zeroize::Zeroizing;
 
 use crate::entry::{encode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
 use crate::stdout_printer::UserOutput;
@@ -33,7 +34,7 @@ impl Command {
             let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                let content = fs::read_to_string(&path)?;
+                let content = Zeroizing::from(fs::read_to_string(&path)?);
                 let encoded = encode(&public_key, &content, &salt)?;
                 let name = path.file_name().unwrap().to_string_lossy();
                 self.repository.store_entry(&name, &encoded)?;

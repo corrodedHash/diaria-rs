@@ -2,6 +2,7 @@
 name = "diaria"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 argon2 = { version = "0.5", features = ["std"] }
@@ -21,6 +22,7 @@ thiserror = "2.0"
 toml = "1.1.2"
 x448 = "0.14.0-pre.10"
 xdg = "3"
+zeroize = { version = "1.8", features = ["alloc"] }
 
 [profile.release]
 # Strip symbols from release binaries — smaller artifacts, cross-target safe.

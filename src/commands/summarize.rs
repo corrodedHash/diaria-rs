@@ -1,4 +1,5 @@
 use chrono::Local;
+use zeroize::Zeroizing;
 
 use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
 use crate::stdout_printer::UserOutput;
@@ -44,8 +45,12 @@ impl Command {
                 {
                     let data = self.repository.read_entry(path)?;
                     let plaintext = decode(&private_key, &data, &salt)?;
-                    self.user_output
-                        .print(&format!("=== Entry from {} ===\n{}\n", date_str, plaintext));
+                    let message = Zeroizing::from(format!(
+                        "=== Entry from {} ===\n{}\n",
+                        date_str,
+                        plaintext.as_str()
+                    ));
+                    self.user_output.print(message.as_str());
                 }
             }
         }
@@ -103,7 +108,7 @@ mod tests {
         let private_key_bytes = *private_key.as_bytes();
         key_manager
             .expect_load_private_key()
-            .returning(move || Ok(private_key_bytes));
+            .returning(move || Ok(Zeroizing::new(private_key_bytes)));
 
         // Exactly one print, and it must carry the matching entry's plaintext.
         let mut user_output = MockUserOutput::new();

@@ -36,7 +36,7 @@ impl Command {
                 let data = self.repository.read_entry(&path)?;
                 let plaintext = decode(&private_key, &data, &salt)?;
                 let dest_path = output_dir.join(path.file_stem().unwrap());
-                fs::write(dest_path, plaintext)?;
+                fs::write(dest_path, &*plaintext)?;
             }
         }
         self.user_output

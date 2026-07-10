@@ -1,14 +1,14 @@
 use std::path::Path;
 
-use dialoguer::FuzzySelect;
-
 use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
+use crate::util::entry_selector::EntrySelector;
 use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repository: Box<dyn DiariaEntryRepository>,
     key_manager: Box<dyn DiariaKeyManager>,
     user_output: Box<dyn UserOutput>,
+    entry_selector: Box<dyn EntrySelector>,
 }
 
 impl Command {
@@ -16,11 +16,13 @@ impl Command {
         repository: Box<dyn DiariaEntryRepository>,
         key_manager: Box<dyn DiariaKeyManager>,
         user_output: Box<dyn UserOutput>,
+        entry_selector: Box<dyn EntrySelector>,
     ) -> Self {
         Self {
             repository,
             key_manager,
             user_output,
+            entry_selector,
         }
     }
 
@@ -52,21 +54,21 @@ impl Command {
             self.user_output.print("No entries found");
             return Ok(None);
         }
-        let selection = FuzzySelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
-            .with_prompt("Select an entry")
-            .items(entries.iter().map(|p| p.display()).collect::<Vec<_>>())
-            .interact()?;
+        let selection = self.entry_selector.select(&entries)?;
         Ok(Some(entries[selection].clone()))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use crate::{
         entry::{
             key_manager::FsKeyManager,
             repository::{MockDiariaEntryRepository, MockDiariaMetaRepository},
         },
+        util::entry_selector::MockEntrySelector,
         util::password::MockPasswordService,
         util::stdout_printer::MockUserOutput,
     };
@@ -111,11 +113,13 @@ mod tests {
             .withf(|text| text == PLAINTEXT)
             .return_const(());
 
+        let entry_selector = MockEntrySelector::new();
         let key_manager = FsKeyManager::new(Box::new(diaria_meta_repo), Box::new(password_service));
         Command::new(
             Box::new(repo),
             Box::new(key_manager),
             Box::new(user_output_service),
+            Box::new(entry_selector),
         )
         .execute(Some(Path::new("testdata/entry1.diaria")))
         .expect("Failed to execute command");
@@ -134,12 +138,14 @@ mod tests {
 
         let password_service = MockPasswordService::new();
         let user_output_service = MockUserOutput::new();
+        let entry_selector = MockEntrySelector::new();
 
         let key_manager = FsKeyManager::new(Box::new(diaria_meta_repo), Box::new(password_service));
         let result = Command::new(
             Box::new(repo),
             Box::new(key_manager),
             Box::new(user_output_service),
+            Box::new(entry_selector),
         )
         .execute(Some(Path::new("testdata/entry1.diaria")));
 
@@ -149,5 +155,83 @@ mod tests {
                 .is_some_and(|e| matches!(e, crate::manifest::ManifestError::LegacyUnversioned)),
             "expected LegacyUnversioned, got: {err}"
         );
+    }
+
+    #[test]
+    fn test_interactive_selection_with_entries() {
+        let mut repo = MockDiariaEntryRepository::new();
+        let entry_path = PathBuf::from("2026-06-21T16:50:46.diaria");
+        repo.expect_list_entries()
+            .returning(move || vec![entry_path.clone()]);
+        repo.expect_read_entry()
+            .returning(|_| Ok(CIPHERTEXT.to_vec()));
+
+        let mut diaria_meta_repo = MockDiariaMetaRepository::new();
+        diaria_meta_repo
+            .expect_fetch_private_key_raw()
+            .returning(|| Ok(PRIVATE_KEY.to_vec()));
+        diaria_meta_repo
+            .expect_fetch_public_key_raw()
+            .returning(|| Ok(PUBLIC_KEY.to_vec()));
+        diaria_meta_repo
+            .expect_fetch_symmetric_key_raw()
+            .returning(|| Ok(SYMKEY.to_vec()));
+        diaria_meta_repo
+            .expect_fetch_manifest_raw()
+            .returning(|| Ok(Some(MANIFEST.to_vec())));
+
+        let mut password_service = MockPasswordService::new();
+        password_service
+            .expect_get_password()
+            .return_const(zeroize::Zeroizing::from("test".to_string()));
+
+        let mut user_output_service = MockUserOutput::new();
+        user_output_service
+            .expect_print()
+            .withf(|text| text == PLAINTEXT)
+            .return_const(());
+
+        let mut entry_selector = MockEntrySelector::new();
+        entry_selector.expect_select().returning(|_| Ok(0));
+
+        let key_manager = FsKeyManager::new(Box::new(diaria_meta_repo), Box::new(password_service));
+        Command::new(
+            Box::new(repo),
+            Box::new(key_manager),
+            Box::new(user_output_service),
+            Box::new(entry_selector),
+        )
+        .execute(None)
+        .expect("Failed to execute command");
+    }
+
+    #[test]
+    fn test_interactive_selection_empty_entries() {
+        let mut repo_with_list = MockDiariaEntryRepository::new();
+        repo_with_list.expect_list_entries().returning(Vec::new);
+
+        let mut diaria_meta_repo = MockDiariaMetaRepository::new();
+        diaria_meta_repo
+            .expect_fetch_manifest_raw()
+            .returning(|| Ok(Some(MANIFEST.to_vec())));
+
+        let password_service = MockPasswordService::new();
+        let entry_selector = MockEntrySelector::new();
+
+        let mut user_output_service = MockUserOutput::new();
+        user_output_service
+            .expect_print()
+            .withf(|text| text == "No entries found")
+            .return_const(());
+
+        let key_manager = FsKeyManager::new(Box::new(diaria_meta_repo), Box::new(password_service));
+        Command::new(
+            Box::new(repo_with_list),
+            Box::new(key_manager),
+            Box::new(user_output_service),
+            Box::new(entry_selector),
+        )
+        .execute(None)
+        .expect("Failed to execute command");
     }
 }

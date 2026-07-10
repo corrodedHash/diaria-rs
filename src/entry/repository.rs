@@ -48,6 +48,7 @@ impl DiariaEntryRepository for DiariaFsRepository {
                 entries
                     .filter_map(|e| e.ok())
                     .map(|e| e.path())
+                    .filter(|p| p.extension().is_some_and(|ext| ext == "diaria"))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()

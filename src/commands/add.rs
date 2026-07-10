@@ -54,10 +54,10 @@ impl Command {
             return Err(Box::new(AddError::EmptyEntry));
         }
 
-        let salt = self.key_manager.load_symmetric_key();
+        let symmetric_key = self.key_manager.load_symmetric_key();
         let public_key = self.key_manager.load_public_key();
 
-        let encoded = encode(&public_key, &input, &salt)?;
+        let encoded = encode(&public_key, &input, &symmetric_key)?;
 
         let entry_id = self.repository.add_entry(&encoded)?;
         self.user_output

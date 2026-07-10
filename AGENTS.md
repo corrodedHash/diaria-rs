@@ -33,10 +33,8 @@ The toolchain is pinned in `rust-toolchain.toml` (Rust **1.96**, edition 2024).
 ## Code conventions
 
 - **No comments unless requested.** Existing code is comment-light; doc
-  comments (`///`) explain *why*, never *what*. Match that tone.
+  comments (`///`) explain _why_, never _what_. Match that tone.
 - `rustfmt.toml` sets `edition = "2024"`. Run `cargo fmt` before committing.
-- Clippy is `-D warnings` — any warning fails CI. Watch for `redundant_closure`
-  (`|| vec![]` → `std::vec::Vec::new`) and similar.
 - Errors use `thiserror` derives with `#[error("...")]` messages that are
   user-facing (they reach the terminal via `Display`, not `Debug`).
 
@@ -50,33 +48,26 @@ single place production code chooses concrete implementations. Tests bypass it
 and pass mocks straight into `Command::new(...)`.
 
 To add or change a command's dependencies:
+
 1. Add the trait field(s) to the command struct.
 2. Add parameters to `Command::new`.
 3. Wire concrete impls in the matching `Di::xxx()` in `src/di.rs`.
 
 Never call `std::env`, `std::fs`, or `println!` directly from command logic — go
-through the injected trait so tests stay deterministic. The injected traits:
-
-| Trait | File | Real impl | Mock |
-|---|---|---|---|
-| `DiariaEntryRepository` | `entry/repository.rs` | `DiariaFsRepository` | `MockDiariaEntryRepository` |
-| `DiariaMetaRepository` | `entry/repository.rs` | `DiariaFsRepository` | `MockDiariaMetaRepository` |
-| `DiariaKeyManager` | `entry/key_manager.rs` | `FsKeyManager` | `MockDiariaKeyManager` |
-| `PasswordService` | `password.rs` | `TerminalPasswordService` | `MockPasswordService` |
-| `Environment` | `environment.rs` | `SystemEnvironment` | `MockEnvironment` |
-| `UserOutput` | `stdout_printer.rs` | `RealUserOutput` | `MockUserOutput` |
-| `FileLoader` | `file_loader.rs` | `RealFileLoader` | `MockFileLoader` |
+through the injected trait so tests stay deterministic.
 
 All mocks are `#[mockall::automock]`-generated.
 
 ### Command layout
 
 `src/commands/<name>.rs` — one file per CLI subcommand. Each has:
+
 - `pub struct Command { injected deps }`
 - `impl Command { pub fn new(...) -> Self; pub fn execute(...) -> Result<...> }`
 - A `#[cfg(test)] mod tests` with mock-driven unit tests.
 
 Register a new command in three places:
+
 1. `src/commands.rs` — `mod name;` + `pub use name::Command as CmdName;`
 2. `src/di.rs` — `pub fn name() -> CmdName { ... }`
 3. `src/main.rs` — add a `Commands::Name` variant to the clap `Subcommand` enum
@@ -128,8 +119,8 @@ Argon2 salt; the private key is encrypted with a key derived from the password
 password (to decrypt the private key); **adding** entries only needs the public
 key + `key.sym`, so `add` never prompts for a password.
 
-`key.sym` is a local secret folded into the HKDF *input key material* (not the
-salt), so breaking X448 alone is not enough to recover an entry's AEAD key.
+`key.sym` is a local secret folded into the HKDF _input key material_, so 
+breaking X448 alone is not enough to recover an entry's AEAD key.
 It must not be synced to remotes; only the `entries/` subtree is synced (via
 `diaria sync`), which keeps `key.sym` local.
 
@@ -138,8 +129,8 @@ It must not be synced to remotes; only the `entries/` subtree is synced (via
 - **No sender authentication.** The XChaCha20Poly1305 tag proves integrity, not
   authorship. Anyone with `key.pub` + `key.sym` (both unencrypted in the vault
   dir) can author entries that decrypt cleanly and look authentic. This is a
-  deliberate trade-off for "add needs no password." For sync to untrusted git
-  remotes, this means a peer with write access can inject forged entries.
+  deliberate trade-off for "add needs no password". The `key.sym` is supposed to stay local,
+  which is the only guard against addition of forged entries.
   Documenting, not patching: closing it would require signing entries with the
   long-term private key, which makes `add` need the password.
 
@@ -186,13 +177,6 @@ with `mise run e2e` (builds first, then `pytest`).
 
 ## Gotchas
 
-- `list_entries()` is raw `read_dir` — it returns **everything** in `entries/`,
-  including a `.git` directory. Use `list_entry_metadata()` when you need only
-  real diary entries (it parses each filename's timestamp and drops the rest).
-  This bit `status`: a git repo under `entries/` inflated the raw count.
-- `read` and `summarize` still call `list_entries()`; the fuzzy-select / date
-  match partly hides the `.git` issue, but filtering to `*.diaria` would be
-  cleaner.
 - Entry filenames use a **local, offset-less** timestamp
   (`%Y-%m-%dT%H:%M:%S.diaria`). Parse as a `NaiveDateTime` then anchor with
   `Local.from_local_datetime(...)` — parsing straight to `DateTime` demands an
@@ -204,8 +188,6 @@ with `mise run e2e` (builds first, then `pytest`).
   future binary's vault). A missing manifest = legacy "v0" vault, refused with
   `LegacyUnversioned`. Never invent a version the binary doesn't know how to
   handle.
-- Clippy's `redundant_closure` lint fires on `|| vec![]` / `|| Vec::new()`;
-  use `std::vec::Vec::new` as a function pointer in mock returners.
 
 ## Commits
 

@@ -67,11 +67,8 @@ diary can be kept in a git repository and synced across machines with
   `key.pub` and `key.sym` (both unencrypted) can author diary entries that
   decrypt cleanly and are indistinguishable from yours — the XChaCha20Poly1305
   tag only proves integrity, not authorship. This is a deliberate trade-off for
-  the "adding needs no password" UX. If you sync entries to an untrusted git
-  remote (a public repo, a shared server), a peer with write access can inject
-  forged entries. Keep the vault directory local and only sync the `entries/`
-  subtree to remotes you trust, or consider adding an out-of-band signature if
-  authorship matters to you.
+  the "adding needs no password" UX. Ensuring the `key.sym` file stays secret
+  is the only guarantee that authorship belongs to you.
 
 ## Development
 

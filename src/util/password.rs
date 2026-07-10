@@ -1,7 +1,7 @@
 use dialoguer::Password;
 use zeroize::Zeroizing;
 
-use crate::environment::Environment;
+use crate::util::environment::Environment;
 
 /// Environment variable that, when set, supplies the encryption password
 /// non-interactively (bypassing the terminal prompt). Primarily for the
@@ -40,7 +40,7 @@ impl PasswordService for TerminalPasswordService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::environment::MockEnvironment;
+    use crate::util::environment::MockEnvironment;
 
     #[test]
     fn uses_password_from_environment_when_set() {

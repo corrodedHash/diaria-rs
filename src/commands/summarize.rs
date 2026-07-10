@@ -2,7 +2,7 @@ use chrono::Local;
 use zeroize::Zeroizing;
 
 use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repository: Box<dyn DiariaEntryRepository>,
@@ -65,7 +65,7 @@ mod tests {
     use crate::entry::key_manager::MockDiariaKeyManager;
     use crate::entry::repository::MockDiariaEntryRepository;
     use crate::entry::version01::{SymmetricKey, generate_keypair};
-    use crate::stdout_printer::MockUserOutput;
+    use crate::util::stdout_printer::MockUserOutput;
     use std::path::PathBuf;
 
     /// `summarize` selects entries whose filename carries a date exactly

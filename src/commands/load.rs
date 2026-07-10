@@ -3,7 +3,7 @@ use std::path::Path;
 use zeroize::Zeroizing;
 
 use crate::entry::{encode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repository: Box<dyn DiariaEntryRepository>,

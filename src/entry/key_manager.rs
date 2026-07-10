@@ -1,7 +1,7 @@
 use crate::{
     crypto::{CipherPrivateKey, derive_key_from_password},
     entry::repository::DiariaMetaRepository,
-    password::PasswordService,
+    util::password::PasswordService,
 };
 use chacha20poly1305::{
     XChaCha20Poly1305,

@@ -3,10 +3,10 @@ use crate::commands::{
 };
 use crate::entry::key_manager::{DiariaKeyManager, FsKeyManager};
 use crate::entry::repository::{DiariaEntryRepository, DiariaFsRepository, DiariaMetaRepository};
-use crate::environment::{Environment, SystemEnvironment};
-use crate::file_loader::{FileLoader, RealFileLoader};
-use crate::password::{PasswordService, TerminalPasswordService};
-use crate::stdout_printer::{RealUserOutput, UserOutput};
+use crate::util::environment::{Environment, SystemEnvironment};
+use crate::util::file_loader::{FileLoader, RealFileLoader};
+use crate::util::password::{PasswordService, TerminalPasswordService};
+use crate::util::stdout_printer::{RealUserOutput, UserOutput};
 
 /// The composition root: the single place that decides which concrete
 /// implementation backs each dependency in a production build. Tests wire

@@ -3,7 +3,7 @@ use colorgrad::{Color, Gradient as _};
 use dialoguer::console;
 
 use crate::entry::repository::{DiariaEntryRepository, EntryMetadata};
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repository: Box<dyn DiariaEntryRepository>,
@@ -202,7 +202,7 @@ mod tests {
     use chrono::TimeZone;
 
     use crate::entry::repository::{EntryMetadata, MockDiariaEntryRepository};
-    use crate::stdout_printer::MockUserOutput;
+    use crate::util::stdout_printer::MockUserOutput;
 
     use super::*;
 

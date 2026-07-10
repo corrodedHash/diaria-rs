@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repository: Box<dyn DiariaEntryRepository>,

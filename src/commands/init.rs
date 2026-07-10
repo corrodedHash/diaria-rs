@@ -7,8 +7,8 @@ use crate::{
     crypto::{CipherPrivateKey, derive_key_from_password},
     entry::{repository::DiariaMetaRepository, version01::generate_keypair},
     manifest::Manifest,
-    password::PasswordService,
-    stdout_printer::UserOutput,
+    util::password::PasswordService,
+    util::stdout_printer::UserOutput,
 };
 
 fn generate_rand_keys<const T: usize>() -> [u8; T] {

@@ -6,8 +6,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     entry::{encode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository},
-    file_loader::FileLoader,
-    stdout_printer::UserOutput,
+    util::file_loader::FileLoader,
+    util::stdout_printer::UserOutput,
 };
 
 #[derive(Debug, Error)]
@@ -71,8 +71,8 @@ mod tests {
     use super::*;
     use crate::entry::key_manager::MockDiariaKeyManager;
     use crate::entry::repository::MockDiariaEntryRepository;
-    use crate::file_loader::MockFileLoader;
-    use crate::stdout_printer::MockUserOutput;
+    use crate::util::file_loader::MockFileLoader;
+    use crate::util::stdout_printer::MockUserOutput;
 
     #[test]
     fn rejects_whitespace_only_entry() {

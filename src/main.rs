@@ -6,11 +6,8 @@ mod commands;
 mod crypto;
 mod di;
 mod entry;
-mod environment;
-mod file_loader;
 mod manifest;
-mod password;
-mod stdout_printer;
+mod util;
 
 use di::Di;
 

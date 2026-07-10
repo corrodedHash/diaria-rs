@@ -3,7 +3,7 @@ use std::path::Path;
 use dialoguer::FuzzySelect;
 
 use crate::entry::{decode, key_manager::DiariaKeyManager, repository::DiariaEntryRepository};
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repository: Box<dyn DiariaEntryRepository>,
@@ -67,8 +67,8 @@ mod tests {
             key_manager::FsKeyManager,
             repository::{MockDiariaEntryRepository, MockDiariaMetaRepository},
         },
-        password::MockPasswordService,
-        stdout_printer::MockUserOutput,
+        util::password::MockPasswordService,
+        util::stdout_printer::MockUserOutput,
     };
 
     use super::*;

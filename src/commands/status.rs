@@ -1,6 +1,6 @@
 use crate::entry::repository::{DiariaEntryRepository, DiariaMetaRepository};
 use crate::manifest::{Manifest, ManifestError};
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     meta_repo: Box<dyn DiariaMetaRepository>,
@@ -114,7 +114,7 @@ mod tests {
         EntryMetadata, MockDiariaEntryRepository, MockDiariaMetaRepository,
     };
     use crate::manifest::Manifest;
-    use crate::stdout_printer::MockUserOutput;
+    use crate::util::stdout_printer::MockUserOutput;
 
     use super::*;
 

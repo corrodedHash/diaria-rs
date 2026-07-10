@@ -1,7 +1,7 @@
 use std::process::Command as ProcessCommand;
 
 use crate::entry::repository::DiariaMetaRepository;
-use crate::stdout_printer::UserOutput;
+use crate::util::stdout_printer::UserOutput;
 
 pub struct Command {
     repo: Box<dyn DiariaMetaRepository>,

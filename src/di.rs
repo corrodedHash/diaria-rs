@@ -1,5 +1,5 @@
 use crate::commands::{
-    CmdAdd, CmdDump, CmdInit, CmdLoad, CmdRead, CmdStats, CmdSummarize, CmdSync,
+    CmdAdd, CmdDump, CmdInit, CmdLoad, CmdRead, CmdStats, CmdStatus, CmdSummarize, CmdSync,
 };
 use crate::entry::key_manager::{DiariaKeyManager, FsKeyManager};
 use crate::entry::repository::{DiariaEntryRepository, DiariaFsRepository, DiariaMetaRepository};
@@ -61,6 +61,10 @@ impl Di {
 
     pub fn stats() -> CmdStats {
         CmdStats::new(Self::entry_repo(), Self::user_output())
+    }
+
+    pub fn status() -> CmdStatus {
+        CmdStatus::new(Self::meta_repo(), Self::entry_repo(), Self::user_output())
     }
 
     pub fn load() -> CmdLoad {

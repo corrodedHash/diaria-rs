@@ -17,8 +17,10 @@ use di::Di;
 #[derive(Parser)]
 #[command(version, about, name = "diaria")]
 struct Cli {
+    // Optional so that a bare `diaria` invocation defaults to `status` rather
+    // than erroring out with "a subcommand is required".
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -42,6 +44,7 @@ enum Commands {
     Sync,
     Summarize,
     Stats,
+    Status,
 }
 
 fn main() -> ExitCode {
@@ -57,7 +60,7 @@ fn main() -> ExitCode {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    match cli.command {
+    match cli.command.unwrap_or(Commands::Status) {
         Commands::Init => Di::init().execute(),
         Commands::Add { input } => Di::add().execute(input.as_deref()),
         Commands::Read { filename } => Di::read().execute(filename.as_deref()),
@@ -66,5 +69,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Sync => Di::sync().execute(),
         Commands::Summarize => Di::summarize().execute(),
         Commands::Stats => Di::stats().execute(),
+        Commands::Status => Di::status().execute(),
     }
 }

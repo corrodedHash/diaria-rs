@@ -7,6 +7,7 @@ use crate::util::dialogue_editor::{DialogueEditor, RealDialogueEditor};
 use crate::util::entry_selector::{EntrySelector, RealEntrySelector};
 use crate::util::environment::{Environment, SystemEnvironment};
 use crate::util::file_loader::{FileLoader, RealFileLoader};
+use crate::util::git_runner::{GitRunner, RealGitRunner};
 use crate::util::password::{PasswordService, TerminalPasswordService};
 use crate::util::stdout_printer::{RealUserOutput, UserOutput};
 
@@ -91,8 +92,12 @@ impl Di {
         CmdDump::new(Self::entry_repo(), Self::key_manager(), Self::user_output())
     }
 
+    fn git_runner() -> Box<dyn GitRunner> {
+        Box::new(RealGitRunner)
+    }
+
     pub fn sync() -> CmdSync {
-        CmdSync::new(Self::meta_repo(), Self::user_output())
+        CmdSync::new(Self::meta_repo(), Self::git_runner(), Self::user_output())
     }
 
     pub fn summarize() -> CmdSummarize {

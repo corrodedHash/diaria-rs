@@ -107,3 +107,71 @@ impl DiariaKeyManager for FsKeyManager {
         Ok(private_key)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::entry::repository::MockDiariaMetaRepository;
+    use crate::util::password::MockPasswordService;
+
+    /// Helper: build an `FsKeyManager` wired to a mock repo. The password
+    /// service is irrelevant for `load_symmetric_key` and `load_public_key` since
+    /// they never prompt for a password.
+    fn make_key_manager(repo: MockDiariaMetaRepository) -> FsKeyManager {
+        FsKeyManager::new(Box::new(repo), Box::new(MockPasswordService::new()))
+    }
+
+    #[test]
+    fn load_symmetric_key_returns_io_error_on_fetch_error() {
+        let mut repo = MockDiariaMetaRepository::new();
+        repo.expect_fetch_symmetric_key_raw().returning(|| {
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "not found",
+            )))
+        });
+
+        let km = make_key_manager(repo);
+        assert!(matches!(km.load_symmetric_key(), Err(KeyError::Io)));
+    }
+
+    #[test]
+    fn load_public_key_returns_io_error_on_fetch_error() {
+        let mut repo = MockDiariaMetaRepository::new();
+        repo.expect_fetch_public_key_raw().returning(|| {
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "not found",
+            )))
+        });
+
+        let km = make_key_manager(repo);
+        assert!(matches!(km.load_public_key(), Err(KeyError::Io)));
+    }
+
+    #[test]
+    fn load_public_key_returns_invalid_key_data_on_bad_bytes() {
+        let mut repo = MockDiariaMetaRepository::new();
+        repo.expect_fetch_public_key_raw()
+            .returning(|| Ok(vec![0u8; 10]));
+
+        let km = make_key_manager(repo);
+        assert!(matches!(
+            km.load_public_key(),
+            Err(KeyError::InvalidKeyData)
+        ));
+    }
+
+    #[test]
+    fn load_symmetric_key_returns_invalid_key_data_on_short_file() {
+        let mut repo = MockDiariaMetaRepository::new();
+        repo.expect_fetch_symmetric_key_raw()
+            .returning(|| Ok(vec![0u8; 16]));
+
+        let km = make_key_manager(repo);
+        assert!(matches!(
+            km.load_symmetric_key(),
+            Err(KeyError::InvalidKeyData)
+        ));
+    }
+}

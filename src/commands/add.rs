@@ -45,20 +45,18 @@ impl Command {
     pub fn execute(&self, path: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
         self.key_manager.load_manifest_version()?;
 
+        let symmetric_key = self.key_manager.load_symmetric_key()?;
+        let public_key = self.key_manager.load_public_key()?;
+
         let input: Zeroizing<String> = if let Some(p) = path {
             self.file_loader.load(p)?
         } else {
             Zeroizing::from(self.dialogue_editor.edit("")?)
         };
 
-        // Reject empty or whitespace-only entries before doing any crypto, so we
-        // never store a "blank" entry.
         if input.trim().is_empty() {
             return Err(Box::new(AddError::EmptyEntry));
         }
-
-        let symmetric_key = self.key_manager.load_symmetric_key()?;
-        let public_key = self.key_manager.load_public_key()?;
 
         let encoded = encode(&public_key, &input, &symmetric_key)?;
 
@@ -71,31 +69,30 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic)]
+
     use super::*;
     use crate::entry::key_manager::MockDiariaKeyManager;
     use crate::entry::repository::MockDiariaEntryRepository;
+    use crate::entry::version01::generate_keypair;
+    use crate::manifest::ManifestError;
     use crate::util::dialogue_editor::MockDialogueEditor;
     use crate::util::file_loader::MockFileLoader;
     use crate::util::stdout_printer::MockUserOutput;
 
-    #[test]
-    fn rejects_whitespace_only_entry() {
-        let mut key_manager = MockDiariaKeyManager::new();
-        key_manager
-            .expect_load_manifest_version()
-            .returning(|| Ok(1));
-
-        let mut file_loader = MockFileLoader::new();
-        file_loader
-            .expect_load()
-            .returning(|_| Ok(Zeroizing::from(" \t\r\n".to_string())));
-
-        // No entry may be stored and nothing may be printed for an empty entry;
-        // leaving these mocks without expectations makes any such call fail.
-        let repository = MockDiariaEntryRepository::new();
-        let dialogue_editor = MockDialogueEditor::new();
-        let user_output = MockUserOutput::new();
-
+    /// Helper: build a [`Command`] wired to mocks, then call `execute`.
+    ///
+    /// Each test sets up only the expectations it cares about; any unexpected
+    /// mock call (e.g. `add_entry` when `encode` should have failed first) will
+    /// cause a mockall panic and fail the test.
+    fn execute_with_mocks(
+        repository: MockDiariaEntryRepository,
+        key_manager: MockDiariaKeyManager,
+        file_loader: MockFileLoader,
+        dialogue_editor: MockDialogueEditor,
+        user_output: MockUserOutput,
+        input: Option<&Path>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let command = Command::new(
             Box::new(repository),
             Box::new(key_manager),
@@ -103,14 +100,126 @@ mod tests {
             Box::new(dialogue_editor),
             Box::new(user_output),
         );
+        command.execute(input)
+    }
 
-        let err = command
-            .execute(Some(Path::new("ignored")))
-            .expect_err("whitespace-only entry should be rejected");
+    #[test]
+    fn rejects_whitespace_only_entry() {
+        let mut key_manager = MockDiariaKeyManager::new();
+        key_manager
+            .expect_load_manifest_version()
+            .returning(|| Ok(1));
+        // Keys are loaded *before* input, so they must be set up even for the
+        // empty-entry path (which rejects after input is gathered).
+        key_manager
+            .expect_load_symmetric_key()
+            .returning(|| Ok([0u8; 32]));
+        let (_, pk) = generate_keypair();
+        key_manager
+            .expect_load_public_key()
+            .returning(move || Ok(pk));
+
+        let mut file_loader = MockFileLoader::new();
+        file_loader
+            .expect_load()
+            .returning(|_| Ok(Zeroizing::from(" \t\r\n".to_string())));
+
+        let repository = MockDiariaEntryRepository::new();
+        let dialogue_editor = MockDialogueEditor::new();
+        let user_output = MockUserOutput::new();
+
+        let err = execute_with_mocks(
+            repository,
+            key_manager,
+            file_loader,
+            dialogue_editor,
+            user_output,
+            Some(Path::new("ignored")),
+        )
+        .expect_err("whitespace-only entry should be rejected");
         assert!(
             err.downcast_ref::<AddError>()
                 .is_some_and(|e| matches!(e, AddError::EmptyEntry)),
             "expected EmptyEntry, got: {err}"
+        );
+    }
+
+    #[test]
+    fn manifest_version_error_propagates_before_input() {
+        let mut key_manager: MockDiariaKeyManager = MockDiariaKeyManager::new();
+        key_manager
+            .expect_load_manifest_version()
+            .returning(|| Err(ManifestError::LegacyUnversioned));
+
+        // No other interaction should happen — no file loading, no editor, no
+        // storage. All other mocks are left without expectations.
+        let file_loader = MockFileLoader::new();
+        let dialogue_editor = MockDialogueEditor::new();
+        let repository = MockDiariaEntryRepository::new();
+        let user_output = MockUserOutput::new();
+
+        let err = execute_with_mocks(
+            repository,
+            key_manager,
+            file_loader,
+            dialogue_editor,
+            user_output,
+            Some(Path::new("ignored")),
+        )
+        .expect_err("manifest error should propagate");
+        assert!(
+            err.downcast_ref::<ManifestError>()
+                .is_some_and(|e| matches!(e, ManifestError::LegacyUnversioned)),
+            "expected LegacyUnversioned, got: {err}"
+        );
+    }
+
+    #[test]
+    fn add_entry_error_after_input_loses_entry() {
+        let mut key_manager = MockDiariaKeyManager::new();
+        key_manager
+            .expect_load_manifest_version()
+            .returning(|| Ok(1));
+        key_manager
+            .expect_load_symmetric_key()
+            .returning(|| Ok([0u8; 32]));
+        let (_, pk) = generate_keypair();
+        key_manager
+            .expect_load_public_key()
+            .returning(move || Ok(pk));
+
+        let mut file_loader = MockFileLoader::new();
+        file_loader
+            .expect_load()
+            .returning(|_| Ok(Zeroizing::from("hello, diary".to_string())));
+
+        let mut repository = MockDiariaEntryRepository::new();
+        repository.expect_add_entry().returning(|_| {
+            Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "permission denied",
+            )))
+        });
+
+        // The entry text was fully processed (compressed, encrypted, enveloped)
+        // but the file write failed — the user's text is lost. We must never
+        // print "Created entry: …" on a failed write.
+        let user_output = MockUserOutput::new();
+        let dialogue_editor = MockDialogueEditor::new();
+
+        let err = execute_with_mocks(
+            repository,
+            key_manager,
+            file_loader,
+            dialogue_editor,
+            user_output,
+            Some(Path::new("ignored")),
+        )
+        .expect_err("add_entry error should propagate");
+        assert!(
+            err.downcast_ref::<std::io::Error>()
+                .is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied),
+            "expected io::PermissionDenied, got: {err}"
         );
     }
 }

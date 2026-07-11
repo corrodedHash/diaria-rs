@@ -49,6 +49,8 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use crate::util::git_runner::MockGitRunner;
     use crate::util::stdout_printer::MockUserOutput;

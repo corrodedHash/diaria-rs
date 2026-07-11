@@ -60,6 +60,8 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::entry::encode;
     use crate::entry::key_manager::MockDiariaKeyManager;
@@ -74,10 +76,10 @@ mod tests {
     /// window, only the former may be read and printed.
     #[test]
     fn decodes_only_entries_dated_at_a_summary_offset() {
+        const MATCHING_PLAINTEXT: &str = "the entry from seven days ago";
         let (private_key, public_key) = generate_keypair();
         let salt: SymmetricKey = [7u8; 32];
 
-        const MATCHING_PLAINTEXT: &str = "the entry from seven days ago";
         let encoded = encode(&public_key, MATCHING_PLAINTEXT, &salt).expect("encode");
 
         // A filename containing the %Y-%m-%d of seven days ago — one of the

@@ -77,6 +77,8 @@ pub fn decode(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
     use super::*;
     use version01::generate_keypair;
 

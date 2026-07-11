@@ -57,6 +57,7 @@ fn derive_aead_key(shared_secret: &[u8], symmetric_key: &SymmetricKey) -> chacha
 
     let hk = hkdf::Hkdf::<sha2::Sha256>::new(Some(HKDF_SALT), &ikm);
     let mut okm = chacha20poly1305::Key::default();
+    #[allow(clippy::expect_used)]
     hk.expand(HKDF_INFO, &mut okm)
         .expect("32 is a valid length for Sha256 to output");
 
@@ -77,6 +78,7 @@ fn derive_shared_secret_later(
     peer_public_key: &X448PublicKey,
     symmetric_key: &SymmetricKey,
 ) -> chacha20poly1305::Key {
+    #[allow(clippy::expect_used)]
     let shared =
         x448(*private_key, *peer_public_key.as_bytes()).expect("Failed to compute shared secret");
     derive_aead_key(&shared, symmetric_key)
@@ -114,10 +116,17 @@ fn decrypt(
         return Err(EntryError::CiphertextTooShort);
     }
 
+    let ephemeral_pub_bytes = ciphertext
+        .get(0..56)
+        .ok_or(EntryError::CiphertextTooShort)?;
     let ephemeral_public =
-        X448PublicKey::from_bytes(&ciphertext[0..56]).ok_or(EntryError::InvalidPublicKey)?;
-    let nonce = XNonce::try_from(&ciphertext[56..80]).expect("This should always work");
-    let actual_ciphertext = &ciphertext[80..];
+        X448PublicKey::from_bytes(ephemeral_pub_bytes).ok_or(EntryError::InvalidPublicKey)?;
+    let nonce_bytes = ciphertext
+        .get(56..80)
+        .ok_or(EntryError::CiphertextTooShort)?;
+    #[allow(clippy::unwrap_used)]
+    let nonce = XNonce::try_from(nonce_bytes).unwrap();
+    let actual_ciphertext = ciphertext.get(80..).ok_or(EntryError::CiphertextTooShort)?;
 
     let shared_secret =
         derive_shared_secret_later(long_term_private, &ephemeral_public, symmetric_key);
@@ -143,10 +152,10 @@ fn compress(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, EntryError> {
     Ok(Zeroizing::new(buf))
 }
 
-fn decompress(input: &[u8]) -> Result<Zeroizing<Vec<u8>>, EntryError> {
-    let mut input = brotli::Decompressor::new(input, 4096);
+fn decompress(compressed: &[u8]) -> Result<Zeroizing<Vec<u8>>, EntryError> {
+    let mut decoder = brotli::Decompressor::new(compressed, 4096);
     let mut buf = Vec::new();
-    input.read_to_end(&mut buf).map_err(EntryError::Io)?;
+    decoder.read_to_end(&mut buf).map_err(EntryError::Io)?;
     Ok(Zeroizing::new(buf))
 }
 
@@ -185,8 +194,10 @@ mod tests {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = Vec::from(b"Hello, this is a secret message!");
         let symmetric_key = [0u8; 32];
+        #[allow(clippy::expect_used)]
         let encrypted =
             encrypt(&long_term_public, &message, &symmetric_key).expect("Encryption failed");
+        #[allow(clippy::expect_used)]
         let decrypted = decrypt(long_term_private.as_bytes(), &encrypted, &symmetric_key)
             .expect("Decryption failed");
         assert_eq!(message.as_slice(), decrypted.as_slice());
@@ -195,7 +206,9 @@ mod tests {
     #[test]
     fn test_compress_decompress() {
         let message = Vec::from(b"Hello, this is a secret message!");
+        #[allow(clippy::expect_used)]
         let compressed = compress(&message).expect("Compression failed");
+        #[allow(clippy::expect_used)]
         let decompressed = decompress(&compressed).expect("Decompression failed");
         assert_eq!(message.as_slice(), decompressed.as_slice());
     }
@@ -205,8 +218,10 @@ mod tests {
         let (long_term_private, long_term_public) = generate_keypair();
         let message = "Hello, this is a secret message!";
         let symmetric_key = [0u8; 32];
+        #[allow(clippy::expect_used)]
         let encoded =
             encode_body(&long_term_public, message, &symmetric_key).expect("Encoding failed");
+        #[allow(clippy::expect_used)]
         let decoded = decode_body(long_term_private.as_bytes(), &encoded, &symmetric_key)
             .expect("Decoding failed");
         assert_eq!(message, decoded.as_str());

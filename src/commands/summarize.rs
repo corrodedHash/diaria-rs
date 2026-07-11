@@ -26,7 +26,7 @@ impl Command {
     pub fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.key_manager.load_manifest_version()?;
 
-        let salt = self.key_manager.load_symmetric_key();
+        let salt = self.key_manager.load_symmetric_key()?;
         let private_key = self.key_manager.load_private_key()?;
         let now = Local::now();
 
@@ -104,7 +104,7 @@ mod tests {
             .returning(|| Ok(1));
         key_manager
             .expect_load_symmetric_key()
-            .returning(move || salt);
+            .returning(move || Ok(salt));
         let private_key_bytes = *private_key.as_bytes();
         key_manager
             .expect_load_private_key()

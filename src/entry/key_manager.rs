@@ -20,6 +20,15 @@ pub enum KeyError {
     /// The private key could not be decrypted — almost always a wrong password.
     #[error("failed to decrypt the private key (wrong password?)")]
     Decryption,
+    /// A key file could not be read from the vault.
+    #[error("failed to read key material from the vault")]
+    Io,
+    /// Key data has an unexpected format or length.
+    #[error("invalid key data")]
+    InvalidKeyData,
+    /// The AEAD cipher could not be initialised (should not happen).
+    #[error("failed to initialise cipher")]
+    CipherInit,
 }
 
 pub struct FsKeyManager {
@@ -36,8 +45,8 @@ impl FsKeyManager {
 #[mockall::automock]
 pub trait DiariaKeyManager {
     fn load_private_key(&self) -> Result<Zeroizing<[u8; 56]>, KeyError>;
-    fn load_public_key(&self) -> X448PublicKey;
-    fn load_symmetric_key(&self) -> SymmetricKey;
+    fn load_public_key(&self) -> Result<X448PublicKey, KeyError>;
+    fn load_symmetric_key(&self) -> Result<SymmetricKey, KeyError>;
     /// Read and validate the vault's format version from its manifest.
     ///
     /// Fails with [`ManifestError::LegacyUnversioned`] for a pre-versioning
@@ -48,16 +57,20 @@ pub trait DiariaKeyManager {
 }
 
 impl DiariaKeyManager for FsKeyManager {
-    fn load_symmetric_key(&self) -> SymmetricKey {
-        let key_bytes = self.repo.fetch_symmetric_key_raw().unwrap();
+    fn load_symmetric_key(&self) -> Result<SymmetricKey, KeyError> {
+        let key_bytes = self
+            .repo
+            .fetch_symmetric_key_raw()
+            .map_err(|_| KeyError::Io)?;
         let mut symkey = [0u8; 32];
-        symkey.copy_from_slice(&key_bytes[..32]);
-        symkey
+        let slice = key_bytes.get(..32).ok_or(KeyError::InvalidKeyData)?;
+        symkey.copy_from_slice(slice);
+        Ok(symkey)
     }
 
-    fn load_public_key(&self) -> X448PublicKey {
-        let key_bytes = self.repo.fetch_public_key_raw().unwrap();
-        X448PublicKey::from_bytes(&key_bytes).expect("Invalid public key format")
+    fn load_public_key(&self) -> Result<X448PublicKey, KeyError> {
+        let key_bytes = self.repo.fetch_public_key_raw().map_err(|_| KeyError::Io)?;
+        X448PublicKey::from_bytes(&key_bytes).ok_or(KeyError::InvalidKeyData)
     }
 
     fn load_manifest_version(&self) -> Result<u32, ManifestError> {
@@ -70,14 +83,17 @@ impl DiariaKeyManager for FsKeyManager {
     }
 
     fn load_private_key(&self) -> Result<Zeroizing<[u8; 56]>, KeyError> {
-        let key_bytes = self.repo.fetch_private_key_raw().unwrap();
+        let key_bytes = self
+            .repo
+            .fetch_private_key_raw()
+            .map_err(|_| KeyError::Io)?;
         let cipher_key = CipherPrivateKey::from(key_bytes.as_slice());
 
         let password = self.password.get_password();
         let encryption_key = derive_key_from_password(&password, &cipher_key.salt);
 
-        let cipher =
-            XChaCha20Poly1305::new_from_slice(&*encryption_key).expect("Failed to create cipher");
+        let cipher = XChaCha20Poly1305::new_from_slice(&*encryption_key)
+            .map_err(|_| KeyError::CipherInit)?;
 
         let decrypted = Zeroizing::new(
             cipher
@@ -86,7 +102,8 @@ impl DiariaKeyManager for FsKeyManager {
         );
 
         let mut private_key = Zeroizing::new([0u8; 56]);
-        private_key.copy_from_slice(&decrypted[..56]);
+        let slice = decrypted.get(..56).ok_or(KeyError::InvalidKeyData)?;
+        private_key.copy_from_slice(slice);
         Ok(private_key)
     }
 }

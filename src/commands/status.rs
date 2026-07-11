@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use crate::entry::repository::{DiariaEntryRepository, DiariaMetaRepository};
 use crate::manifest::{Manifest, ManifestError};
 use crate::util::stdout_printer::UserOutput;
@@ -78,26 +80,29 @@ impl Command {
         let found_or_missing = |found: bool| if found { "found" } else { "missing" };
 
         let mut report = String::new();
-        report.push_str(&format!("diaria {binary_version}\n\n"));
-        report.push_str(&format!("Vault: {}\n", base_dir.display()));
-        report.push_str(&format!("Entries: {}\n\n", entries_dir.display()));
-        report.push_str(&format!("Vault format version: {vault_version}\n"));
-        report.push_str(&format!("Setup: {vault_setup}\n\n"));
+        let _ = writeln!(report, "diaria {binary_version}");
+        let _ = writeln!(report, "Vault: {}", base_dir.display());
+        let _ = writeln!(report, "Entries: {}", entries_dir.display());
+        let _ = writeln!(report, "Vault format version: {vault_version}");
+        let _ = writeln!(report, "Setup: {vault_setup}");
         report.push_str("Keys:\n");
-        report.push_str(&format!(
-            "  private key:   {}\n",
+        let _ = writeln!(
+            report,
+            "  private key:   {}",
             found_or_missing(private_found)
-        ));
-        report.push_str(&format!(
-            "  public key:    {}\n",
+        );
+        let _ = writeln!(
+            report,
+            "  public key:    {}",
             found_or_missing(public_found)
-        ));
-        report.push_str(&format!(
-            "  symmetric key: {}\n\n",
+        );
+        let _ = writeln!(
+            report,
+            "  symmetric key: {}",
             found_or_missing(symmetric_found)
-        ));
-        report.push_str(&format!("Entries: {entry_count}\n\n"));
-        report.push_str(&format!("Git sync: {git_sync}"));
+        );
+        let _ = writeln!(report, "Entries: {entry_count}");
+        let _ = write!(report, "Git sync: {git_sync}");
 
         self.user_output.print(&report);
         Ok(())

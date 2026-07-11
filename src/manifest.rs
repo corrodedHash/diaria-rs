@@ -25,12 +25,13 @@ pub struct Manifest {
 
 impl Manifest {
     /// A manifest describing the current format version.
-    pub fn current() -> Self {
+    pub const fn current() -> Self {
         Self {
             version: CURRENT_VERSION,
         }
     }
 
+    #[allow(clippy::expect_used)]
     pub fn to_toml(self) -> String {
         // Serializing a one-field struct to a documented format cannot fail.
         toml::to_string(&self).expect("manifest serialization is infallible")
@@ -43,7 +44,7 @@ impl Manifest {
     /// understand.
     pub fn parse(bytes: &[u8]) -> Result<Self, ManifestError> {
         let text = std::str::from_utf8(bytes).map_err(|_| ManifestError::Malformed)?;
-        let manifest: Manifest = toml::from_str(text).map_err(|_| ManifestError::Malformed)?;
+        let manifest: Self = toml::from_str(text).map_err(|_| ManifestError::Malformed)?;
 
         if manifest.version == 0 || manifest.version > CURRENT_VERSION {
             return Err(ManifestError::UnknownVersion(manifest.version));
@@ -73,6 +74,7 @@ pub enum ManifestError {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 

@@ -1,4 +1,14 @@
-use chrono::{Datelike as _, Weekday};
+#![allow(
+    clippy::cast_possible_wrap,
+    clippy::as_conversions,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing
+)]
+
+use std::fmt::Write;
+
+use chrono::{Datelike as _, NaiveDate, Weekday};
 use colorgrad::{Color, Gradient as _};
 use dialoguer::console;
 
@@ -26,8 +36,6 @@ impl Command {
 struct Year(u32);
 
 type YearWeekdayIndex = std::collections::HashMap<(Year, chrono::Weekday), [u32; 60]>;
-
-use chrono::NaiveDate;
 
 fn get_weekday_range(year: Year, target_weekday: chrono::Weekday) -> (u32, u32) {
     // Get their weekdays and the week of December 31
@@ -60,7 +68,7 @@ fn get_weekday_range(year: Year, target_weekday: chrono::Weekday) -> (u32, u32) 
 
 fn relative_luminance(color: &colorgrad::Color) -> f32 {
     let [r, g, b, _] = color.to_linear_rgba();
-    0.2126 * r + 0.7152 * g + 0.0722 * b
+    0.0722f32.mul_add(b, 0.7152f32.mul_add(g, 0.2126 * r))
 }
 
 fn michelson_contrast(color_1: &colorgrad::Color, color_2: &colorgrad::Color) -> f32 {
@@ -69,19 +77,20 @@ fn michelson_contrast(color_1: &colorgrad::Color, color_2: &colorgrad::Color) ->
     (l2 - l1) * (l2 + l1)
 }
 
-fn to_console_color(color: &colorgrad::Color) -> console::Color {
+const fn to_console_color(color: &colorgrad::Color) -> console::Color {
     let [r, g, b, _] = color.to_rgba8();
     console::Color::TrueColor(r, g, b)
 }
 
+const COLOR_TITAN_WHITE: Color = Color::from_rgba8(0xe5, 0xe8, 0xff, 0x00);
+const COLOR_MELROSE: Color = Color::from_rgba8(0x91, 0x9b, 0xff, 0x00);
+const COLOR_TOREA_BAY: Color = Color::from_rgba8(0x13, 0x3a, 0x94, 0x00);
+const COLOR_WILD_STRAWBERRY: Color = Color::from_rgba8(0xff, 0x40, 0x7e, 0x00);
+
 fn year_weekday_line(counts: &YearWeekdayIndex, year: Year, weekday: chrono::Weekday) -> String {
     let line = counts.get(&(year, weekday)).unwrap_or(&[0u32; 60]);
-    let mut output = "".to_owned();
+    let mut output = String::new();
     let (min_kw, max_kw) = get_weekday_range(year, weekday);
-    const COLOR_TITAN_WHITE: Color = Color::from_rgba8(0xe5, 0xe8, 0xff, 0x00);
-    const COLOR_MELROSE: Color = Color::from_rgba8(0x91, 0x9b, 0xff, 0x00);
-    const COLOR_TOREA_BAY: Color = Color::from_rgba8(0x13, 0x3a, 0x94, 0x00);
-    const COLOR_WILD_STRAWBERRY: Color = Color::from_rgba8(0xff, 0x40, 0x7e, 0x00);
 
     let g = colorgrad::GradientBuilder::new()
         .colors(&[
@@ -117,9 +126,10 @@ fn year_weekday_line(counts: &YearWeekdayIndex, year: Year, weekday: chrono::Wee
         let formatted_size = if size_kb > 9 {
             " >9"
         } else {
-            &format!("  {}", size_kb)
+            &format!("  {size_kb}")
         };
-        output += &format!(
+        let _ = write!(
+            output,
             "{}",
             console::style(formatted_size)
                 .bg(console_color)

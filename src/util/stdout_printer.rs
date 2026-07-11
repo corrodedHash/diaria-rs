@@ -6,7 +6,8 @@ pub trait UserOutput {
 }
 
 impl UserOutput for RealUserOutput {
+    #[allow(clippy::print_stdout)]
     fn print(&self, text: &str) {
-        println!("{}", text);
+        println!("{text}");
     }
 }

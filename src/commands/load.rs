@@ -27,16 +27,19 @@ impl Command {
     pub fn execute(&self, directory: &Path) -> Result<(), Box<dyn std::error::Error>> {
         self.key_manager.load_manifest_version()?;
 
-        let salt = self.key_manager.load_symmetric_key();
-        let public_key = self.key_manager.load_public_key();
+        let salt = self.key_manager.load_symmetric_key()?;
+        let public_key = self.key_manager.load_public_key()?;
 
-        for entry in fs::read_dir(directory)? {
-            let entry = entry?;
+        for dir_entry in fs::read_dir(directory)? {
+            let entry = dir_entry?;
             let path = entry.path();
             if path.is_file() {
                 let content = Zeroizing::from(fs::read_to_string(&path)?);
                 let encoded = encode(&public_key, &content, &salt)?;
-                let name = path.file_name().unwrap().to_string_lossy();
+                let name = path
+                    .file_name()
+                    .ok_or_else(|| format!("path {} has no file name", path.display()))?
+                    .to_string_lossy();
                 self.repository.store_entry(&name, &encoded)?;
             }
         }

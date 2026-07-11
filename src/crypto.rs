@@ -6,6 +6,12 @@ use chacha20poly1305::XNonce;
 use zeroize::Zeroizing;
 
 /// Derives a 32-byte symmetric key from a password and salt using Argon2.
+///
+/// # Panics
+///
+/// Panics if the underlying Argon2 library encounters an error (in practice,
+/// in-memory hashing with valid parameters is infallible).
+#[allow(clippy::expect_used)]
 pub fn derive_key_from_password(password: &str, salt: &[u8; 32]) -> Zeroizing<[u8; 32]> {
     let argon2 = Argon2::default();
     let salt_string = SaltString::encode_b64(salt).expect("Failed to encode salt");

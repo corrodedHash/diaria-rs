@@ -50,16 +50,20 @@ pub fn decode(
     data: &[u8],
     symmetric_key: &SymmetricKey,
 ) -> Result<Zeroizing<String>, EntryError> {
-    if data.len() < MAGIC_TAG.len() + 1 {
-        return Err(EntryError::DataTooShort);
-    }
-
-    if &data[..MAGIC_TAG.len()] != MAGIC_TAG {
+    let magic = data
+        .get(..MAGIC_TAG.len())
+        .ok_or(EntryError::DataTooShort)?;
+    if magic != MAGIC_TAG {
         return Err(EntryError::InvalidMagicTag);
     }
 
-    let version = data[MAGIC_TAG.len()];
-    let body = &data[MAGIC_TAG.len() + 1..];
+    let version = data
+        .get(MAGIC_TAG.len())
+        .copied()
+        .ok_or(EntryError::DataTooShort)?;
+    let body = data
+        .get(MAGIC_TAG.len() + 1..)
+        .ok_or(EntryError::DataTooShort)?;
 
     match version {
         version01::VERSION => Ok(version01::decode_body(

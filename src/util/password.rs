@@ -24,6 +24,7 @@ pub trait PasswordService {
 }
 
 impl PasswordService for TerminalPasswordService {
+    #[allow(clippy::expect_used)]
     fn get_password(&self) -> Zeroizing<String> {
         if let Some(password) = self.environment.get(PASSWORD_ENV) {
             return Zeroizing::from(password);

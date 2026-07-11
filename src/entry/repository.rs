@@ -46,7 +46,7 @@ impl DiariaEntryRepository for DiariaFsRepository {
             .ok()
             .map(|entries| {
                 entries
-                    .filter_map(|e| e.ok())
+                    .filter_map(std::result::Result::ok)
                     .map(|e| e.path())
                     .filter(|p| p.extension().is_some_and(|ext| ext == "diaria"))
                     .collect::<Vec<_>>()
@@ -56,7 +56,7 @@ impl DiariaEntryRepository for DiariaFsRepository {
 
     fn add_entry(&self, entry: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
         let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-        self.store_entry(&format!("{}.diaria", timestamp), entry)?;
+        self.store_entry(&format!("{timestamp}.diaria"), entry)?;
         Ok(timestamp)
     }
 
@@ -72,7 +72,7 @@ impl DiariaEntryRepository for DiariaFsRepository {
             .ok()
             .map(|entries| {
                 entries
-                    .filter_map(|e| e.ok())
+                    .filter_map(std::result::Result::ok)
                     .filter_map(|e| {
                         let metadata = e.metadata().ok()?;
                         let binding = e.file_name();
@@ -102,6 +102,7 @@ impl DiariaEntryRepository for DiariaFsRepository {
 
 impl DiariaMetaRepository for DiariaFsRepository {
     fn get_base_dir(&self) -> PathBuf {
+        #[allow(clippy::expect_used)]
         BaseDirectories::with_prefix("diaria")
             .get_data_home()
             .expect("Failed to get base dir")
@@ -110,6 +111,7 @@ impl DiariaMetaRepository for DiariaFsRepository {
     fn create_structure(&self) {
         let base_dir = self.get_base_dir();
         let entries_dir = base_dir.join("entries");
+        #[allow(clippy::expect_used)]
         std::fs::create_dir_all(entries_dir).expect("Failed to create entries directory");
     }
 

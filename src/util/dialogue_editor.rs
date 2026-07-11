@@ -12,6 +12,6 @@ impl DialogueEditor for RealDialogueEditor {
         Editor::new()
             .edit("")
             .map_err(std::io::Error::other)
-            .map(|opt| opt.unwrap_or_default())
+            .map(std::option::Option::unwrap_or_default)
     }
 }

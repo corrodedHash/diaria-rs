@@ -45,6 +45,7 @@ enum Commands {
 }
 
 fn main() -> ExitCode {
+    #[allow(clippy::print_stderr)]
     if let Err(e) = run() {
         // Print the error's `Display` (its human-facing message) rather than
         // the `Debug` form the default `Termination` impl would use.

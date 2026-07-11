@@ -36,6 +36,7 @@ impl Command {
         }
     }
 
+    #[allow(clippy::expect_used)]
     pub fn execute(&self) -> Result<(), Box<dyn std::error::Error>> {
         self.repo.create_structure();
 

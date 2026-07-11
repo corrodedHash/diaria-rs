@@ -38,7 +38,7 @@ impl Command {
             entry_path
         };
 
-        let salt = self.key_manager.load_symmetric_key();
+        let salt = self.key_manager.load_symmetric_key()?;
         let private_key = self.key_manager.load_private_key()?;
         let data = self.repository.read_entry(&entry_path)?;
         let plaintext = decode(&private_key, &data, &salt)?;
@@ -55,11 +55,18 @@ impl Command {
             return Ok(None);
         }
         let selection = self.entry_selector.select(&entries)?;
-        Ok(Some(entries[selection].clone()))
+        let entry = entries.get(selection).ok_or_else(|| {
+            format!(
+                "entry selector returned invalid index {selection} ({} entries)",
+                entries.len()
+            )
+        })?;
+        Ok(Some(entry.clone()))
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use std::path::PathBuf;
 

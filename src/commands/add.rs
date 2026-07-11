@@ -42,10 +42,10 @@ impl Command {
         }
     }
 
-    pub fn execute(&self, input: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn execute(&self, path: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
         self.key_manager.load_manifest_version()?;
 
-        let input: Zeroizing<String> = if let Some(p) = input {
+        let input: Zeroizing<String> = if let Some(p) = path {
             self.file_loader.load(p)?
         } else {
             Zeroizing::from(self.dialogue_editor.edit("")?)
@@ -57,14 +57,14 @@ impl Command {
             return Err(Box::new(AddError::EmptyEntry));
         }
 
-        let symmetric_key = self.key_manager.load_symmetric_key();
-        let public_key = self.key_manager.load_public_key();
+        let symmetric_key = self.key_manager.load_symmetric_key()?;
+        let public_key = self.key_manager.load_public_key()?;
 
         let encoded = encode(&public_key, &input, &symmetric_key)?;
 
         let entry_id = self.repository.add_entry(&encoded)?;
         self.user_output
-            .print(&format!("Created entry: {}", entry_id));
+            .print(&format!("Created entry: {entry_id}"));
         Ok(())
     }
 }

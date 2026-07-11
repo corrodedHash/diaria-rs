@@ -199,3 +199,29 @@ during feature work.
 
 Do not commit unless explicitly asked. When you do, stage only intended files
 and never commit secrets.
+
+## Sandboxed agent runs (Docker + worktree)
+
+`tools/agent-sandbox.sh` wraps opencode in a Docker container on a throwaway
+git worktree.  The agent can read, write, commit, and push on its own branch
+without touching the main working tree.
+
+```
+tools/agent-sandbox.sh --agent sandbox --auto "refactor the sync module"
+```
+
+- Creates a worktree at `/tmp/diaria-<ts>/` on a new `agent-<ts>` branch.
+- Mounts that worktree into a container with Rust, opencode, and `mise`.
+- Passes all arguments through to `opencode` — use `--agent sandbox --auto`
+  to run the sandbox agent with auto-approval.
+- The worktree and branch are removed on exit (via `trap`).  If you want to
+  keep the branch for a PR, push it first from inside the container.
+- Rebuild the image: `docker build -t diaria-agent .`
+
+Safety properties:
+- **Container isolation.** Only the worktree directory is writable.  The rest
+  of the filesystem is read-only (except tmpfs mounts for `/tmp`).
+- **Worktree isolation.** The main working tree (`src/`, etc.) is never
+  mounted.  The agent works on a detached branch.
+- **`external_directory: deny`.** The sandbox agent config blocks access to
+  any path outside the workspace directory.

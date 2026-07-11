@@ -33,5 +33,32 @@
       "mise tasks": "allow",
       "mise tasks *": "allow"
     }
+  },
+  "agent": {
+    "sandbox": {
+      "description": "Agent for isolated container runs (tools/agent-sandbox.sh). Safe to --auto.",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "cargo *": "allow",
+          "mise *": "allow",
+          "git *": "allow",
+          "git push *": "allow",
+          "git fetch *": "allow",
+          "git commit *": "allow",
+          "rustup *": "allow",
+          "python3 *": "allow",
+          "pytest *": "allow",
+          "uv *": "allow",
+          "ls *": "allow",
+          "mkdir *": "allow",
+          "rm *": "allow",
+          "rm -rf *": "ask"
+        },
+        "external_directory": {
+          "*": "deny"
+        }
+      }
+    }
   }
 }

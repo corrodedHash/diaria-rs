@@ -5,8 +5,8 @@
 
 [tools]
 # Used by the `changelog` task and mirrored by the release workflow.
-git-cliff = "latest"
-uv = 'latest'
+git-cliff = { version = "2.13.1", repository = "https://github.com/orhun/git-cliff" }
+uv = { version = "0.11.28", repository = "https://github.com/astral-sh/uv" }
 
 [tasks.build]
 description = "Build the debug binary"

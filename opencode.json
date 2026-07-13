@@ -13,6 +13,7 @@
       "cargo check *": "allow",
       "cargo test": "allow",
       "cargo test *": "allow",
+      "INSTA_UPDATE=1 cargo test *": "allow",
       "cargo run": "allow",
       "cargo run *": "allow",
       "cargo doc": "allow",

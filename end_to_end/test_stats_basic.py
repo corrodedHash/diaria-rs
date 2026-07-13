@@ -15,8 +15,9 @@ def _row_count(stdout: str) -> int:
 def test_stats_buckets_by_year(diaria: Path, vault: Vault):
     """`stats` reads only each entry filename's timestamp and size (no keys, no
     decryption), so undecryptable dummy files suffice. Entries in 2019 and 2021
-    span three inclusive years (2019, 2020, 2021) → 3 * 7 rows, even though 2020
-    has no entry of its own; the range between earliest and latest is filled."""
+    span three years (2019, 2020, 2021), but 2020 is empty so it is not rendered
+    → 2 * 9 rows (year header, month header, 7 weekday rows). Trailing empty
+    weeks within each year are also trimmed."""
     (vault.entries / "2019-03-04T08:00:00.diaria").write_bytes(b"x")
     (vault.entries / "2021-11-02T08:00:00.diaria").write_bytes(b"x")
 
@@ -28,14 +29,15 @@ def test_stats_buckets_by_year(diaria: Path, vault: Vault):
         encoding="utf-8",
     ).stdout
 
-    assert _row_count(stats_output) == 3 * 7
+    assert _row_count(stats_output) == 2 * 9
     # A rendered cell proves the entries were actually counted (before the
     # timestamp-parsing fix, stats produced no output at all).
     assert "0" in stats_output
 
 
 def test_stats_single_year(diaria: Path, vault: Vault):
-    """A single year's entries produce exactly one seven-row block."""
+    """A single year's entries produce exactly one nine-row block (year header,
+    month header, 7 weekday rows)."""
     (vault.entries / "2020-06-06T08:00:00.diaria").write_bytes(b"x")
 
     stats_output = subprocess.run(
@@ -46,7 +48,7 @@ def test_stats_single_year(diaria: Path, vault: Vault):
         encoding="utf-8",
     ).stdout
 
-    assert _row_count(stats_output) == 7
+    assert _row_count(stats_output) == 9
 
 
 def test_stats_empty_vault(diaria: Path, vault: Vault):

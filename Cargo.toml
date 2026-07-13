@@ -28,6 +28,9 @@ x448 = "0.14.0-pre.10"
 xdg = "3"
 zeroize = { version = "1.8", features = ["alloc"] }
 
+[dev-dependencies]
+insta = { version = "1.42" }
+
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }

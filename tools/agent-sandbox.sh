@@ -16,10 +16,11 @@ set -euo pipefail
 # review/merge/PR it.
 #
 # Usage:
-#   tools/agent-sandbox.sh --auto "fix the build"
-#   tools/agent-sandbox.sh --auto --agent sandbox "add a feature"
+#   tools/agent-sandbox.sh "fix the build"
+#   tools/agent-sandbox.sh --no-auto "add a feature"
 #
-# Any arguments are forwarded to `opencode`.
+# Defaults to `--agent sandbox --auto`. `--no-auto` opts out of auto-approval.
+# Any other arguments are forwarded to `opencode`.
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 TIMESTAMP="$(date +%s)"
@@ -27,6 +28,16 @@ BRANCH_NAME="agent-${TIMESTAMP}"
 SANDBOX_DIR="/tmp/diaria-${TIMESTAMP}"
 
 cd "$REPO_ROOT"
+
+# ── args ──────────────────────────────────────────────────────────────
+# Defaults; user args may override (or --no-auto drops --auto).
+opencode_args=(--agent sandbox --auto)
+for arg in "$@"; do
+    case "$arg" in
+        --no-auto) opencode_args=(${opencode_args[*]/--auto}) ;;
+        *)         opencode_args+=("$arg") ;;
+    esac
+done
 
 # ── cleanup ───────────────────────────────────────────────────────────
 cleanup() {
@@ -56,6 +67,7 @@ echo "→ Starting opencode in container (branch: ${BRANCH_NAME})" >&2
 docker run -it --rm \
     --name "diaria-agent-${TIMESTAMP}" \
     -v "${SANDBOX_DIR}:/workspace" \
+    -v "${HOME}/.local/share/opencode/auth.json:/home/agent/.local/share/opencode/auth.json:ro" \
     -w /workspace \
     --network host \
     -e "OPENCODE_AUTO_SHARE=false" \
@@ -64,4 +76,4 @@ docker run -it --rm \
     -e "GIT_COMMITTER_NAME=diaria-agent" \
     -e "GIT_COMMITTER_EMAIL=agent@diaria.local" \
     diaria-agent \
-    "$@"
+    "${opencode_args[@]}"

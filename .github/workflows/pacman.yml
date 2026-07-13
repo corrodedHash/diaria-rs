@@ -1,0 +1,109 @@
+name: Pacman repo
+
+# Builds a binary diaria-rs-git package for x86_64 inside an archlinux
+# container, then pushes the .pkg.tar.zst (plus the repo-add-generated
+# diaria.db / diaria.files) to a self-hosted pacman repo under the
+# maintainer's GitHub account. Users consume it via:
+#
+#   # /etc/pacman.conf
+#   [diaria]
+#   Server = https://raw.githubusercontent.com/<owner>/<pacman-repo>/main/
+#
+#   sudo pacman -Sy diaria-rs-git
+#
+# One-time prerequisites (manual):
+#   1. Create an empty GitHub repo, e.g. `<owner>/diaria-arch`. Set a
+#      repository *variable* (Settings → Secrets and variables → Actions →
+#      Variables) named `PACMAN_REPO` on THIS repo, value `<owner>/<repo>`
+#      (e.g. `corrodedHash/diaria-arch`).
+#   2. Generate a dedicated SSH keypair: `ssh-keygen -t ed25519 -f pacman_key`.
+#   3. Add the PUBLIC key as a *deploy key* on the pacman repo
+#      (Settings → Deploy keys), ticked "Allow write access".
+#   4. Add the PRIVATE key (pacman_key contents) as a GitHub Actions SECRET on
+#      THIS repo named `PACMAN_REPO_SSH_KEY`
+#      (Settings → Secrets and variables → Actions → Secrets).
+
+on:
+  # push:
+  #   branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    name: build & publish diaria-rs-git
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git openssh rust sudo nodejs pacman-contrib
+
+      # makepkg refuses to run as root; run only the build step as builder.
+      - name: Create unprivileged builder user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Allow git in workspace (dubious-ownership workaround)
+        run: git config --global --add safe.directory '*'
+
+      - name: Hand workspace to the builder
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Configure deploy key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.PACMAN_REPO_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+          printf 'Host github.com\n  IdentityFile ~/.ssh/deploy_key\n  IdentitiesOnly yes\n' > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Bake git-derived pkgver into PKGBUILD
+        working-directory: dist/pacman
+        run: |
+          count=$(git rev-list --count HEAD)
+          short=$(git rev-parse --short HEAD)
+          sed -i "s/^pkgver=.*/pkgver=r${count}.${short}/" PKGBUILD
+          echo "Building diaria-rs-git r${count}.${short}"
+
+      - name: Build package
+        working-directory: dist/pacman
+        run: |
+          chown -R builder:builder .
+          sudo -u builder bash -c "cd '$GITHUB_WORKSPACE/dist/pacman' && makepkg -s --noconfirm"
+          ls -l *.pkg.tar.zst
+
+      - name: Clone pacman repo
+        env:
+          PACMAN_REPO: ${{ vars.PACMAN_REPO }}
+        run: |
+          test -n "$PACMAN_REPO" || { echo "PACMAN_REPO variable is not set"; exit 1; }
+          git clone "ssh://git@github.com/${PACMAN_REPO}.git" pacman-repo
+
+      - name: Copy package & regenerate db
+        run: |
+          cp dist/pacman/*.pkg.tar.zst pacman-repo/
+          cd pacman-repo
+          # -R removes the previous package file from disk when its db entry
+          # is superseded, keeping the repo to just the latest binary.
+          repo-add -R diaria.db *.pkg.tar.zst
+          # repo-add creates symlinks (diaria.db -> diaria.db.tar.gz); GitHub
+          # raw does not follow symlinks, so replace them with the real files.
+          rm -f diaria.db diaria.files
+          mv diaria.db.tar.gz diaria.db
+          mv diaria.files.tar.gz diaria.files
+
+      - name: Push to pacman repo
+        run: |
+          cd pacman-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add *.pkg.tar.zst diaria.db diaria.files
+          git commit -m "Update diaria-rs-git from upstream $(echo "$GITHUB_SHA" | cut -c1-7)" || echo "no changes to publish"
+          git push origin HEAD:main

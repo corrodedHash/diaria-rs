@@ -200,28 +200,37 @@ during feature work.
 Do not commit unless explicitly asked. When you do, stage only intended files
 and never commit secrets.
 
-## Sandboxed agent runs (Docker + worktree)
+## Sandboxed agent runs (Docker + clone)
 
 `tools/agent-sandbox.sh` wraps opencode in a Docker container on a throwaway
-git worktree.  The agent can read, write, commit, and push on its own branch
-without touching the main working tree.
+**clone** of the repo.  A git worktree is not used because a worktree's `.git`
+is just a pointer back into the main repo's object DB; mounting only the
+worktree dir into a container leaves every git operation dangling.  A full
+clone is self-contained, so the container owns a `.git` it can actually use.
 
 ```
 tools/agent-sandbox.sh --agent sandbox --auto "refactor the sync module"
 ```
 
-- Creates a worktree at `/tmp/diaria-<ts>/` on a new `agent-<ts>` branch.
-- Mounts that worktree into a container with Rust, opencode, and `mise`.
+- Clones the repo to `/tmp/diaria-<ts>/` and creates a new `agent-<ts>` branch.
+- Mounts that clone into a container with Rust, opencode, and `mise`.
 - Passes all arguments through to `opencode` — use `--agent sandbox --auto`
   to run the sandbox agent with auto-approval.
-- The worktree and branch are removed on exit (via `trap`).  If you want to
-  keep the branch for a PR, push it first from inside the container.
-- Rebuild the image: `docker build -t diaria-agent .`
+- On exit the agent's branch is **fetched back into the main repo** as
+  `refs/heads/agent-<ts>` — a purely local, host-side fetch of objects straight
+  from the clone dir, so no `git push` or remote auth is needed either inside
+  the container or on the host.  Review/merge/PR it from your normal checkout,
+  then delete the branch when done.  No `agent-<ts>` ref is left dangling in
+  the clone because the clone is removed.
+- Rebuild the image: `docker build -t diaria-agent .` (the script builds it
+  automatically otherwise).
 
 Safety properties:
-- **Container isolation.** Only the worktree directory is writable.  The rest
+- **Container isolation.** Only the clone directory is writable.  The rest
   of the filesystem is read-only (except tmpfs mounts for `/tmp`).
-- **Worktree isolation.** The main working tree (`src/`, etc.) is never
-  mounted.  The agent works on a detached branch.
+- **Repo isolation.** The main repository (`src/`, refs, objects, `HEAD`) is
+  never mounted.  The agent physically cannot touch `main` or any other
+  existing ref; the only thing it can produce is the local `agent-<ts>` branch,
+  which the host imports into the main repo on exit.
 - **`external_directory: deny`.** The sandbox agent config blocks access to
   any path outside the workspace directory.

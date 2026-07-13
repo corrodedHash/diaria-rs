@@ -31,7 +31,11 @@ read -r reply
 [ "$reply" = y ] || { echo "aborted"; exit 0; }
 
 # Keep the crate version in step with the tag so the binary's --version is honest.
-sed -i '' -E "s/^version = \".*\"/version = \"$number\"/" Cargo.toml
+if [ "$(uname)" = "Darwin" ]; then
+  sed -i '' -E "s/^version = \".*\"/version = \"$number\"/" Cargo.toml
+else
+  sed -i -E "s/^version = \".*\"/version = \"$number\"/" Cargo.toml
+fi
 cargo check --quiet   # rewrite the version recorded in Cargo.lock
 git add Cargo.toml Cargo.lock
 # Only commit when the version actually moved. On the first release the tag is

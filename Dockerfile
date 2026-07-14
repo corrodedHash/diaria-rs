@@ -12,13 +12,14 @@ ENV PATH=/opt/mise/shims:$PATH
 COPY mise.toml /tmp/mise.toml
 RUN cd /tmp && mise trust mise.toml && mise install
 
-RUN OPENCODE_INSTALL_DIR=/usr/local/bin \
-    curl -fsSL https://opencode.ai/install | bash
+RUN curl -fsSL https://opencode.ai/install | bash && \
+    mv "$HOME/.opencode/bin/opencode" /usr/local/bin/opencode
 
 RUN useradd -m -u 1000 agent
 
 RUN mkdir /workspace && chown agent:agent /workspace
-RUN mkdir -p /home/agent/.local/share/opencode && chown agent:agent /home/agent/.local/share/opencode
+RUN mkdir -p /home/agent/.local/share/opencode /home/agent/.local/state && \
+    chown -R agent:agent /home/agent/.local
 WORKDIR /workspace
 
 USER agent

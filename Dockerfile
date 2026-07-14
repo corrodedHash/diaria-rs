@@ -18,10 +18,10 @@ RUN curl -fsSL https://opencode.ai/install | bash && \
 RUN useradd -m -u 1000 agent
 
 RUN mkdir /workspace && chown agent:agent /workspace
-RUN mkdir -p /home/agent/.local/share/opencode /home/agent/.local/state && \
-    chown -R agent:agent /home/agent/.local
-WORKDIR /workspace
 
 USER agent
+
+RUN mkdir -p /home/agent/.local/share/opencode /home/agent/.local/state
+WORKDIR /workspace
 
 ENTRYPOINT ["opencode"]

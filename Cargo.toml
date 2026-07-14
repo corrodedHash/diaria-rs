@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "An encrypted, plain-text command-line diary"
-repository = "https://github.com/anomalyco/diaria"
+repository = "https://github.com/corrodedHash/diaria-rs"
 keywords = ["diary", "encrypted", "cli"]
 categories = ["command-line-utilities", "cryptography"]
 

@@ -2,8 +2,8 @@
 # VCS package — builds diaria from the latest main of corrodedHash/diaria-rs.
 # The committed pkgver is a placeholder; pkgver() recomputes it at build time.
 
-pkgname=diaria-rs-git
-pkgver=r0
+pkgname=diaria
+pkgver=0.2.0.r3.g85e0014
 pkgrel=1
 pkgdesc="Encrypted, plain-text command-line diary"
 arch=('x86_64' 'aarch64')
@@ -17,7 +17,7 @@ sha256sums=('SKIP')
 
 pkgver() {
     cd "$srcdir/$pkgname"
-    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+    git describe --tags --long --match 'v*' | sed 's/^v//; s/-/.r/; s/-/./g'
 }
 
 prepare() {

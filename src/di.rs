@@ -18,11 +18,11 @@ pub struct Di;
 
 impl Di {
     fn entry_repo() -> Box<dyn DiariaEntryRepository> {
-        Box::new(DiariaFsRepository {})
+        Box::new(DiariaFsRepository::new(Self::user_output()))
     }
 
     fn meta_repo() -> Box<dyn DiariaMetaRepository> {
-        Box::new(DiariaFsRepository {})
+        Box::new(DiariaFsRepository::new(Self::user_output()))
     }
 
     fn environment() -> Box<dyn Environment> {

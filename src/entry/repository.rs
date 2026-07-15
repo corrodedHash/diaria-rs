@@ -4,6 +4,8 @@ use std::{fs, path::Path};
 use chrono::{Local, TimeZone as _};
 use xdg::BaseDirectories;
 
+use crate::util::stdout_printer::UserOutput;
+
 pub struct EntryMetadata {
     pub timestamp: chrono::DateTime<chrono::Local>,
     pub size: u64,
@@ -37,7 +39,15 @@ pub trait DiariaMetaRepository {
     /// manifest (a legacy, unversioned "v0" vault).
     fn fetch_manifest_raw(&self) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>>;
 }
-pub struct DiariaFsRepository {}
+pub struct DiariaFsRepository {
+    output: Box<dyn UserOutput>,
+}
+
+impl DiariaFsRepository {
+    pub fn new(output: Box<dyn UserOutput>) -> Self {
+        Self { output }
+    }
+}
 
 impl DiariaEntryRepository for DiariaFsRepository {
     fn list_entries(&self) -> Vec<PathBuf> {
@@ -102,17 +112,12 @@ impl DiariaEntryRepository for DiariaFsRepository {
 
 impl DiariaMetaRepository for DiariaFsRepository {
     fn get_base_dir(&self) -> PathBuf {
-        // xdg crate v3 ignores relative XDG_DATA_HOME per the XDG spec; resolve
-        // it to absolute so `XDG_DATA_HOME=test ./diaria status` works intuitively.
-        if let Ok(val) = std::env::var("XDG_DATA_HOME") {
-            let path = std::path::Path::new(&val);
-            if path.is_relative()
-                && let Ok(cwd) = std::env::current_dir()
-            {
-                // SAFETY: single-threaded startup, no other thread reads
-                // XDG_DATA_HOME concurrently.
-                unsafe { std::env::set_var("XDG_DATA_HOME", cwd.join(path)) };
-            }
+        if let Ok(val) = std::env::var("XDG_DATA_HOME")
+            && std::path::Path::new(&val).is_relative()
+        {
+            self.output.warn(&format!(
+                "XDG_DATA_HOME is a relative path (\"{val}\"), ignoring it"
+            ));
         }
         #[allow(clippy::expect_used)]
         BaseDirectories::with_prefix("diaria")

@@ -36,10 +36,10 @@ impl Command {
             if path.is_file() {
                 let content = Zeroizing::from(fs::read_to_string(&path)?);
                 let encoded = encode(&public_key, &content, &salt)?;
-                let name = path
-                    .file_name()
-                    .ok_or_else(|| format!("path {} has no file name", path.display()))?
-                    .to_string_lossy();
+                let stem = path
+                    .file_stem()
+                    .ok_or_else(|| format!("path {} has no file name", path.display()))?;
+                let name = format!("{}.diaria", stem.to_string_lossy());
                 self.repository.store_entry(&name, &encoded)?;
             }
         }

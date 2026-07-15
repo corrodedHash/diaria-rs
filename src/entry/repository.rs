@@ -102,6 +102,18 @@ impl DiariaEntryRepository for DiariaFsRepository {
 
 impl DiariaMetaRepository for DiariaFsRepository {
     fn get_base_dir(&self) -> PathBuf {
+        // xdg crate v3 ignores relative XDG_DATA_HOME per the XDG spec; resolve
+        // it to absolute so `XDG_DATA_HOME=test ./diaria status` works intuitively.
+        if let Ok(val) = std::env::var("XDG_DATA_HOME") {
+            let path = std::path::Path::new(&val);
+            if path.is_relative()
+                && let Ok(cwd) = std::env::current_dir()
+            {
+                // SAFETY: single-threaded startup, no other thread reads
+                // XDG_DATA_HOME concurrently.
+                unsafe { std::env::set_var("XDG_DATA_HOME", cwd.join(path)) };
+            }
+        }
         #[allow(clippy::expect_used)]
         BaseDirectories::with_prefix("diaria")
             .get_data_home()

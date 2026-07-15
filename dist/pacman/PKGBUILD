@@ -3,7 +3,7 @@
 # The committed pkgver is a placeholder; pkgver() recomputes it at build time.
 
 pkgname=diaria
-pkgver=0.2.0.r3.g85e0014
+pkgver=0.2.1.r0.gc4b2ab8
 pkgrel=1
 pkgdesc="Encrypted, plain-text command-line diary"
 arch=('x86_64' 'aarch64')
@@ -17,7 +17,7 @@ sha256sums=('SKIP')
 
 pkgver() {
     cd "$srcdir/$pkgname"
-    git describe --tags --long --match 'v*' | sed 's/^v//; s/-/.r/; s/-/./g'
+    git describe --tags --long --match 'v*' | sed 's/^v//; s/-/.r/; s/-/./g' | sed 's/\.r0\..*//'
 }
 
 prepare() {

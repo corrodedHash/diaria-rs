@@ -1,6 +1,6 @@
 [package]
 name = "diaria"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 license = "MIT"
 description = "An encrypted, plain-text command-line diary"

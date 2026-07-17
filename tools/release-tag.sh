@@ -56,10 +56,10 @@ pr_url="$(gh pr create \
   --head "$branch" \
   --title "chore(release): $version" \
   --body "$(git cliff --unreleased --tag "$version" --strip header)")"
-gh pr merge --auto --squash --subject "chore(release): $version"
+gh pr merge "$pr_url" --auto --squash --subject "chore(release): $version"
 echo "PR: $pr_url (auto-merge enabled). Waiting for merge..."
 while :; do
-  state="$(gh pr view --json state --jq .state)"
+  state="$(gh pr view "$pr_url" --json state --jq .state)"
   [ "$state" = MERGED ] && break
   [ "$state" = CLOSED ] && { echo "PR was closed without merging. Tag not pushed." >&2; exit 1; }
   sleep 10

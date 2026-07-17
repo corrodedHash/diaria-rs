@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Cut a release: pick the next version, sync Cargo.toml, commit, tag, push.
+# Cut a release: pick the next version, sync Cargo.toml, commit, open a PR with
+# auto-merge, wait for the squash merge to land on main, then push the tag.
 #
 # git-cliff derives the bump from the conventional commits since the last tag
 # (feat -> minor, fix -> patch, breaking -> major). Override with VERSION=vX.Y.Z.
-# Pushing the tag is what triggers the release workflow.
+# The tag is pushed only after the PR merges, so the release workflow (which
+# watches for tags on main) fires against the merge commit.
 #
-# Intended to be run via `mise run tag` (mise puts git-cliff on PATH).
+# Intended to be run via `mise run tag` (mise puts git-cliff on PATH). Requires
+# `gh` for opening the pull request.
 set -euo pipefail
 
 git diff --quiet && git diff --cached --quiet || {
@@ -26,7 +29,8 @@ number="${version#v}"
 echo "== Notes for $version =="
 git cliff --unreleased --tag "$version" --strip header
 
-printf '\nTag and push %s? [y/N] ' "$version"
+current_branch="$(git rev-parse --abbrev-ref HEAD)"
+printf '\nTag and open a PR for %s (from %s -> main)? [y/N] ' "$version" "$current_branch"
 read -r reply
 [ "$reply" = y ] || { echo "aborted"; exit 0; }
 
@@ -45,6 +49,23 @@ if git diff --cached --quiet; then
 else
   git commit -m "chore(release): $version"
 fi
-git tag -a "$version" -m "Release $version"
-git push --follow-tags
-echo "Pushed $version — the release workflow will build and publish it."
+branch="release/$version"
+git push origin "$current_branch:$branch"
+pr_url="$(gh pr create \
+  --base main \
+  --head "$branch" \
+  --title "chore(release): $version" \
+  --body "$(git cliff --unreleased --tag "$version" --strip header)")"
+gh pr merge --auto --squash --subject "chore(release): $version"
+echo "PR: $pr_url (auto-merge enabled). Waiting for merge..."
+while :; do
+  state="$(gh pr view --json state --jq .state)"
+  [ "$state" = MERGED ] && break
+  [ "$state" = CLOSED ] && { echo "PR was closed without merging. Tag not pushed." >&2; exit 1; }
+  sleep 10
+done
+echo "PR merged. Tagging and pushing $version on main."
+git fetch origin main
+git tag -a "$version" -m "Release $version" origin/main
+git push origin "$version"
+echo "Tag $version pushed to main. Release workflow will fire."

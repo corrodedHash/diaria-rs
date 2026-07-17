@@ -50,7 +50,9 @@ else
   git commit -m "chore(release): $version"
 fi
 branch="release/$version"
-git push --force origin "$current_branch:$branch"
+if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+  git push origin "$current_branch:$branch"
+fi
 pr_url="$(gh pr list --head "$branch" --json url --jq '.[0].url // empty')"
 if [ -z "$pr_url" ]; then
   pr_url="$(gh pr create \
@@ -59,14 +61,26 @@ if [ -z "$pr_url" ]; then
     --title "chore(release): $version" \
     --body "$(git cliff --unreleased --tag "$version" --strip header)")"
 fi
-gh pr merge "$pr_url" --auto --squash --subject "chore(release): $version"
-echo "PR: $pr_url (auto-merge enabled). Waiting for merge..."
-while :; do
-  state="$(gh pr view "$pr_url" --json state --jq .state)"
-  [ "$state" = MERGED ] && break
-  [ "$state" = CLOSED ] && { echo "PR was closed without merging. Tag not pushed." >&2; exit 1; }
-  sleep 10
-done
+state="$(gh pr view "$pr_url" --json state --jq .state)"
+case "$state" in
+  MERGED)
+    echo "PR already merged."
+    ;;
+  CLOSED)
+    echo "PR is closed. Tag not pushed." >&2
+    exit 1
+    ;;
+  OPEN)
+    gh pr merge "$pr_url" --auto --squash --subject "chore(release): $version"
+    echo "PR: $pr_url (auto-merge enabled). Waiting for merge..."
+    while :; do
+      state="$(gh pr view "$pr_url" --json state --jq .state)"
+      [ "$state" = MERGED ] && break
+      [ "$state" = CLOSED ] && { echo "PR was closed without merging. Tag not pushed." >&2; exit 1; }
+      sleep 10
+    done
+    ;;
+esac
 echo "PR merged. Tagging and pushing $version on main."
 git fetch origin main
 if git rev-parse "$version" >/dev/null 2>&1; then

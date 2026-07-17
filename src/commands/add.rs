@@ -70,7 +70,6 @@ impl Command {
             .filter(|p| !p.trim().is_empty())
             .count()
             .max(1);
-        let longest_word = input.split_whitespace().max_by_key(|w| w.len());
 
         // --- size comparison ---
         let new_size = u64::try_from(encoded.len()).unwrap_or(u64::MAX);
@@ -88,9 +87,6 @@ impl Command {
             msg,
             "\nStats: {word_count} words, {paragraph_count} paragraphs"
         );
-        if let Some(w) = longest_word {
-            let _ = write!(msg, ", longest word: \"{w}\"");
-        }
 
         #[allow(clippy::as_conversions)]
         let size_kb = new_size as f64 / 1024.0;

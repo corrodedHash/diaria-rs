@@ -50,12 +50,15 @@ else
   git commit -m "chore(release): $version"
 fi
 branch="release/$version"
-git push origin "$current_branch:$branch"
-pr_url="$(gh pr create \
-  --base main \
-  --head "$branch" \
-  --title "chore(release): $version" \
-  --body "$(git cliff --unreleased --tag "$version" --strip header)")"
+git push --force origin "$current_branch:$branch"
+pr_url="$(gh pr list --head "$branch" --json url --jq '.[0].url // empty')"
+if [ -z "$pr_url" ]; then
+  pr_url="$(gh pr create \
+    --base main \
+    --head "$branch" \
+    --title "chore(release): $version" \
+    --body "$(git cliff --unreleased --tag "$version" --strip header)")"
+fi
 gh pr merge "$pr_url" --auto --squash --subject "chore(release): $version"
 echo "PR: $pr_url (auto-merge enabled). Waiting for merge..."
 while :; do
@@ -66,6 +69,10 @@ while :; do
 done
 echo "PR merged. Tagging and pushing $version on main."
 git fetch origin main
+if git rev-parse "$version" >/dev/null 2>&1; then
+  echo "Tag $version already exists locally; deleting and recreating from origin/main."
+  git tag -d "$version"
+fi
 git tag -a "$version" -m "Release $version" origin/main
-git push origin "$version"
+git push --force origin "$version"
 echo "Tag $version pushed to main. Release workflow will fire."

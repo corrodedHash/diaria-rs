@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::path::Path;
 
 use thiserror::Error;
@@ -61,8 +62,47 @@ impl Command {
         let encoded = encode(&public_key, &input, &symmetric_key)?;
 
         let entry_id = self.repository.add_entry(&encoded)?;
-        self.user_output
-            .print(&format!("Created entry: {entry_id}"));
+
+        // --- text stats ---
+        let word_count = input.split_whitespace().count();
+        let paragraph_count = input
+            .split("\n\n")
+            .filter(|p| !p.trim().is_empty())
+            .count()
+            .max(1);
+
+        // --- size comparison ---
+        let new_size = u64::try_from(encoded.len()).unwrap_or(u64::MAX);
+        let existing_sizes: Vec<u64> = self
+            .repository
+            .list_entry_metadata()
+            .iter()
+            .map(|m| m.size)
+            .collect();
+        let n_larger = existing_sizes.iter().filter(|&&s| s > new_size).count();
+        let total = existing_sizes.len();
+
+        let mut msg = format!("Created entry: {entry_id}");
+        let _ = write!(
+            msg,
+            "\nStats: {word_count} words, {paragraph_count} paragraphs"
+        );
+
+        #[allow(clippy::as_conversions)]
+        let size_kb = new_size as f64 / 1024.0;
+        let _ = write!(msg, "\nEncrypted size: {size_kb:.1} KB");
+        if total == 0 {
+            let _ = write!(msg, " — only entry");
+        } else {
+            #[allow(clippy::as_conversions)]
+            let pct = (total.saturating_sub(n_larger)) as f64 / total as f64 * 100.0;
+            let _ = write!(
+                msg,
+                " — larger than {pct:.0}% of entries ({n_larger} larger)"
+            );
+        }
+
+        self.user_output.print(&msg);
         Ok(())
     }
 }

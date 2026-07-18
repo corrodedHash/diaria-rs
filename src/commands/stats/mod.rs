@@ -42,9 +42,10 @@ impl Command {
 
         let heatmap = heatmap::Heatmap::new();
         let built_index = index::build_year_weekday_index(&metadata);
+        let today = chrono::Local::now().date_naive();
         let mut result = String::new();
         for year in earliest_year..=latest_year {
-            result += &render::year_block(&built_index, &heatmap, year);
+            result += &render::year_block(&built_index, &heatmap, year, today);
         }
 
         console::set_colors_enabled(true);
@@ -277,7 +278,8 @@ mod tests {
         }];
         let built = build_year_weekday_index(&metadata);
         let heatmap = Heatmap::new();
-        let block = year_block(&built, &heatmap, 2026);
+        let today = NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
+        let block = year_block(&built, &heatmap, 2026, today);
         let year_header = block.lines().next().expect("year block has a header line");
         let expected = super::index::n_calendar_weeks(2026) * 3;
         assert_eq!(
@@ -295,7 +297,8 @@ mod tests {
         }];
         let built = build_year_weekday_index(&metadata);
         let heatmap = Heatmap::new();
-        let block = year_block(&built, &heatmap, 2025);
+        let today = NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
+        let block = year_block(&built, &heatmap, 2025, today);
         assert!(
             block.is_empty(),
             "a year with no entries must produce no output"
@@ -342,9 +345,10 @@ mod tests {
         let built_index = build_year_weekday_index(&metadata);
         let (earliest_year, latest_year) = super::index::year_span(&metadata).unwrap();
         let heatmap = Heatmap::new();
+        let today = NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
         let mut result = String::new();
         for year in earliest_year..=latest_year {
-            result += &year_block(&built_index, &heatmap, year);
+            result += &year_block(&built_index, &heatmap, year, today);
         }
         insta::assert_snapshot!(result);
     }

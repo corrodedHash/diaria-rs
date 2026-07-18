@@ -36,11 +36,14 @@ fn calendar_week_index(date: NaiveDate) -> (i32, usize) {
     (cy, idx)
 }
 
-pub fn cell_belongs_to_year(year: i32, week_idx: usize, weekday: Weekday) -> bool {
+pub fn cell_date(year: i32, week_idx: usize, weekday: Weekday) -> NaiveDate {
     let first = first_week_monday(year);
     let offset = i64::from(weekday.number_from_monday() - 1);
-    let date = first + Duration::days(week_idx as i64 * 7 + offset);
-    date.year() == year
+    first + Duration::days(week_idx as i64 * 7 + offset)
+}
+
+pub fn cell_belongs_to_year(year: i32, week_idx: usize, weekday: Weekday) -> bool {
+    cell_date(year, week_idx, weekday).year() == year
 }
 
 pub fn month_week_ranges(year: i32, n_weeks: u32) -> [(u32, u32); 12] {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/corrodedHash/diaria-rs/compare/diaria-v1.1.0...diaria-v1.1.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* set repo-url explicitly in gh release upload ([#16](https://github.com/corrodedHash/diaria-rs/issues/16)) ([4f39a55](https://github.com/corrodedHash/diaria-rs/commit/4f39a5556849c9e31f0676b87082deaaac9e446b))
+
 ## [1.1.0](https://github.com/corrodedHash/diaria-rs/compare/diaria-v1.0.3...diaria-v1.1.0) (2026-07-19)
 
 

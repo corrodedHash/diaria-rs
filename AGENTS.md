@@ -191,47 +191,20 @@ with `mise run e2e` (builds first, then `pytest`).
 
 ## Commits
 
-Conventional Commits, enforced by `git-cliff` (`cliff.toml`) for changelog
-generation. Use `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`,
-`perf:`. Releases are tagged `v<semver>` (see release process below); the
-version in `Cargo.toml` is bumped as part of the release flow, not by hand
-during feature work.
+Conventional Commits. Use `feat:`, `fix:`, `refactor:`, `docs:`, `test:`,
+`chore:`, `perf:`. The version in `Cargo.toml` is bumped by release-please
+when a release PR is merged, not by hand during feature work.
 
 Do not commit unless explicitly asked. When you do, stage only intended files
 and never commit secrets.
 
 ## Release process
 
-### Principles
-
-- **Conventional commits drive the version.** `git-cliff` reads all commits
-  since the last tag and derives the bump: `feat:` → minor, `fix:` → patch,
-  `BREAKING CHANGE:` or `feat!:` → major.
-- **All changes land via PR.** Never push to `main` directly. Feature work,
-  fixes, and the release itself all go through separate branches and PRs.
-- **The release script automates the cut.** `mise run tag` (wraps
-  `tools/release-tag.sh`) bumps `Cargo.toml`, commits, opens a PR to `main`,
-  waits for the squash merge, then pushes the tag to the merge commit so the CI
-  release workflow fires.
-
-### Steps
-
-1. **Ensure `main` is up to date** and the working tree is clean.
-2. **Run `mise run tag`.** This will:
-   - Bump the version using `git-cliff --bumped-version` (or `VERSION=vX.Y.Z`
-     env var to override).
-   - Show the generated changelog notes and ask for confirmation.
-   - Commit the `Cargo.toml`/`Cargo.lock` bump and push a `release/vX.Y.Z`
-     branch.
-   - Open a squash-merge PR (`release/vX.Y.Z` → `main`) with auto-merge
-     enabled.
-   - **Wait** for the PR to merge.
-   - Tag the merge commit on `main` and push the tag — this triggers the
-     release workflow.
-3. **Verify the release CI** completes successfully.
-
-The script requires `gh` (GitHub CLI) and `git-cliff` (provided via `mise`).
-Override the bumped version: `VERSION=v1.2.3 mise run tag`.
+Releases are automated via
+[release-please](https://github.com/googleapis/release-please). On every push
+to `main`, `.github/workflows/release-please.yml` creates or updates a release
+PR. Merging that PR cuts a new GitHub Release, builds binaries for all
+targets, and uploads them as release assets. No manual tagging needed.
 
 ## Sandboxed agent runs (Docker + clone)
 

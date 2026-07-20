@@ -1,0 +1,26 @@
+amends "package://github.com/jdx/hk/releases/download/v1.51.0/hk@1.51.0#/Config.pkl"
+
+local linters = new Mapping<String, Step> {
+  ["fmt"] {
+    glob = "*.rs"
+    check = "cargo fmt --all -- --check"
+    fix = "cargo fmt --all"
+  }
+  ["clippy"] {
+    glob = "*.rs"
+    check = "cargo clippy --all-targets --all-features -- -D warnings"
+  }
+}
+
+hooks {
+  ["pre-commit"] {
+    steps = linters
+  }
+  ["fix"] {
+    fix = true
+    steps = linters
+  }
+  ["check"] {
+    steps = linters
+  }
+}

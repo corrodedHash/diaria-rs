@@ -437,7 +437,7 @@ dependencies = [
 
 [[package]]
 name = "diaria"
-version = "1.2.1"
+version = "1.3.0"
 dependencies = [
  "argon2",
  "brotli",

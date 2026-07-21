@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/corrodedHash/diaria-rs/compare/v1.2.1...v1.3.0) (2026-07-21)
+
+
+### Features
+
+* add build attestation to release workflow ([#24](https://github.com/corrodedHash/diaria-rs/issues/24)) ([d7da561](https://github.com/corrodedHash/diaria-rs/commit/d7da5614d1f811e1d57651eedb8bdc91ea38f249))
+
 ## [1.2.1](https://github.com/corrodedHash/diaria-rs/compare/v1.2.0...v1.2.1) (2026-07-20)
 
 

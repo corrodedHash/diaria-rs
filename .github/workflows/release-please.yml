@@ -86,8 +86,52 @@ jobs:
           name: ${{ matrix.target }}
           path: "*.tar.gz"
 
+  build-archlinux:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tooling
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel rustup sudo
+
+      - name: Create unprivileged builder user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+      - uses: actions/checkout@v4
+
+      - name: Allow git in workspace
+        run: git config --global --add safe.directory '*'
+
+      - name: Hand workspace to the builder
+        run: chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      - name: Inject release version into PKGBUILD
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          VERSION="${TAG#v}"
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" dist/pacman/PKGBUILD
+          echo "Building diaria $VERSION"
+
+      - name: Build package
+        run: |
+          sudo -u builder bash -c "cd '$GITHUB_WORKSPACE/dist/pacman' && makepkg --noconfirm"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86_64-archlinux
+          path: dist/pacman/*.pkg.tar.zst
+
   upload:
-    needs: [release-please, build]
+    needs: [release-please, build, build-archlinux]
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     permissions:
@@ -105,9 +149,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${{ needs.release-please.outputs.tag_name }}" dist/*.tar.gz --repo "${{ github.repository }}"
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            dist/*.tar.gz dist/*.pkg.tar.zst \
+            --repo "${{ github.repository }}"
 
       - name: Attest
         uses: actions/attest@v4
         with:
-          subject-path: "dist/*.tar.gz"
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.pkg.tar.zst

@@ -1,14 +1,17 @@
 # Design note: indexing, semantic search, and entity tracking
 
 Status: **proposal** (in progress). Encryption, sync, SQLite layout, the
-binary split, and the division of labour (local NER *suggests*, external LLM /
-manual *verifies*) are settled. The **embedding model**, **MCP framework**, and
-exact **subcommand details** are still open. No product code changed by this
+binary split, the open attribute model, and the division of labour (local NER
+*suggests*, external LLM / manual *verifies*) are settled. The **embedding
+model**, **MCP framework**, exact **subcommand details**, and the
+**report/dashboard layer** are still open. No product code changed by this
 note.
 
 Scope: a new binary + a derived index. **No change to the entry format or the
 manifest format version** — the index is a sidecar that is rebuilt from
-decrypted entries, never part of an entry.
+decrypted entries, never part of an entry. Reports and dashboards are the
+eventual consumer of this index; this note fixes only the storage/query
+foundation they will read, not the reports themselves.
 
 ## Goals
 
@@ -17,6 +20,11 @@ decrypted entries, never part of an entry.
 - Track distinct **things** — people and places (later orgs/events) — and tie
   each to the **specific mention(s)** it appears in, with evidence.
 - Sync the derived index across machines; keep embeddings local.
+- Provide an **open attribute framework**: a future fact about an entry,
+  entity, or mention is stored as data (key/value), not as a new column or
+  format version.
+- Make **reports** (time with people, co-occurrence, locations, projects,
+  effort) queries over the index, without changing the write side.
 
 ## Decided: binary split (workspace)
 
@@ -186,6 +194,87 @@ The **local embeddings store** is a separate SQLite DB (never synced):
 `chunks(entry_id, chunk_index, text, embedding BLOB)`. The embedding BLOB is
 `f32` bytes in model dimension order; see the embedding open question.
 
+## Decided: open attribute model
+
+The entity/mention tables model the facts known *today*. To avoid committing to
+that closed set, everything not modelled there is written as an **attribute**:
+a generic `(subject, key, value)` row. New ideas — `project`, `location`,
+`duration`, `mood`, `book`, whatever comes next — are data, not schema changes.
+
+```sql
+-- A stable subject an attribute can hang off. `ref` is the identity that
+-- survives a rebuild, never a row id that re-indexing may recycle.
+CREATE TABLE attribute_subjects (
+    id    INTEGER PRIMARY KEY,
+    kind  TEXT NOT NULL,          -- 'entry' | 'entity' | 'mention' | ...
+    ref   TEXT NOT NULL,          -- entry_id / entity.key / stable mention identity
+    UNIQUE (kind, ref)
+);
+
+CREATE TABLE attributes (
+    id           INTEGER PRIMARY KEY,
+    subject_id   INTEGER NOT NULL REFERENCES attribute_subjects(id),
+    key          TEXT NOT NULL,   -- 'project', 'location', 'duration', ...
+    value        TEXT NOT NULL,   -- canonical text form
+    value_kind   TEXT NOT NULL DEFAULT 'text', -- 'text' | 'number' | 'date' | 'bool' | 'entity'
+    value_num    REAL,            -- numeric projection for number attributes
+    unit         TEXT,            -- 'hours', 'km', ... (number only)
+    source       TEXT NOT NULL,   -- 'user' | 'extractor' | 'llm' | 'derived'
+    confidence   REAL,
+    status       TEXT NOT NULL DEFAULT 'suggested', -- suggested | verified | rejected
+    created_at   TEXT NOT NULL,
+    UNIQUE (subject_id, key, value)
+);
+```
+
+- **One mechanism, several subject kinds.** Entry attributes ("this entry was
+  about `project = diaria`") and entity attributes ("`location = Berlin`,
+  `visited = true`") share one table. Adding a subject kind (`chunk`, later
+  `event`) only adds a `kind` value.
+- **Stable refs, not row ids.** `ref` is the entry filename, the entity dedup
+  `key`, or the stable mention identity (entry + chunk + span + text) already
+  used to preserve verify verdicts. Re-indexing rebuilds rows but not
+  identities, so verified attributes survive.
+- **Same lifecycle as mentions.** Extractors/LLM write `suggested`; `verify`
+  flips to `verified`/`rejected` and sets `source`. `value_kind` keeps
+  filtering honest instead of using `CAST` as the type system. `value_num` is
+  only for genuine number attributes (e.g. `duration = 2, unit = 'hours'`),
+  never for derived effort metrics.
+- **Presence stays a first-class column.** It is the one fact aggregated on
+  every query (`present_count`), so promoting it into `attributes` would only
+  add joins. Treat it as a built-in shortcut: everything new goes to
+  `attributes`, so nothing needs a migration to become queryable.
+- **Kinds and keys are data.** `entities.kind` and attribute keys are free
+  text; an extractor declares which kinds it produces. No enum gates additions.
+- **Same protection as the index.** Attributes live in the synced encrypted
+  index, so confidentiality and the password-to-write rule apply unchanged.
+
+## Deferred: reports and the query contract
+
+Reports are the **goal** of the index, but not part of this foundation. The base
+tables plus a set of **read-only SQL views** are the contract: a report is a
+query plus a renderer, so a new question never changes the write side.
+
+Settled now, so the base schema can support them:
+
+- **Co-occurrence is derived, not stored.** "People mentioned together" is a
+  self-join over `mentions` on the same `entry_id` (or the same
+  `entry_id, chunk_index` for a tighter window). No pair table until a query
+  measurably needs one.
+- **Effort is derived from spans.** Per-mention span offsets and lengths (plus
+  the entry/chunk text that already exists locally) are enough; no word/char
+  scalars are added to the synced index.
+- **Time spent is an attribute or a timestamp convention.** A duration is an
+  explicit `duration` attribute (`source = 'user' | 'llm'`), or derived from
+  entry timestamps at report time. It is not a column on `mentions`.
+- **Views, not report tables.** When reports are built: seed views for
+  entity/presence, per-entry attributes, and mention co-occurrence; `--json`
+  output as the stable contract; text/table/graph renderers as a thin layer.
+  Dashboards and graphs (mermaid/DOT) come after a JSON report works.
+
+Explicitly out of scope here: report definitions, aggregation caching, chart
+rendering, and any dashboard UI.
+
 ## Decided: extraction (NER) — suggests only
 
 `index` uses **in-process GLiNER** (`gline-rs`, or `anno`'s stacked backends) to
@@ -256,6 +345,10 @@ exposed as an MCP command (the "evaluate these suggestions" action).
 - Rejected: RAM-dir + agent (leaves plaintext on a tmpfs, gives raw file access
   instead of controlled tools).
 
+Reports follow the same shape when they are built: native queries over the
+read-only views, exposed as MCP tools alongside the rest. They are not part of
+the initial foundation.
+
 ## Proposed subcommands
 
 - `diaria` (write/read, unchanged): `init`, `add`, `read`, `load`, `dump`,
@@ -271,6 +364,11 @@ exposed as an MCP command (the "evaluate these suggestions" action).
     external LLM answer.
   - `entities` — list tracked people/places with presence counts, drill into
     mentions/evidence.
+  - `attributes` — list/set entry/entity/mention attributes (manual authoring,
+    same lifecycle as `verify`).
+  - `report` — future consumer over the read-only views (co-occurrence,
+    per-entity presence/time, per-entry attributes, …), `--json` first. Not
+    part of the initial foundation.
   - `mcp` — run the MCP server exposing the above as tools.
 
 ## Follow-up implementation tasks
@@ -282,6 +380,10 @@ exposed as an MCP command (the "evaluate these suggestions" action).
 >   write `suggested` mentions (spans only, empty semantic context) into the
 >   synced SQLite store, encrypted with the entry envelope. DI-style:
 >   `EntityExtractor` as an injected, mockable trait.
+> - **Attribute store**: add `attribute_subjects` + `attributes`, a `SubjectRef`
+>   value type for the stable entry/entity/mention refs, and a writer trait so
+>   extractors, the external LLM, and manual authoring all write through one
+>   path. Preserve verified attributes across re-indexing.
 > - **Verify** (`diaria-index verify`): a `SemanticContext` trait
 >   (external-LLM provider + `dialoguer` manual TUI) that fills `presence` and
 >   canonical name, marking `verified`/`rejected`; preserve verdicts across
@@ -290,5 +392,9 @@ exposed as an MCP command (the "evaluate these suggestions" action).
 >   include the synced index; add a unit test asserting the index path is staged.
 > - **Write-auth test**: assert building/writing the index requires the private
 >   key/password (mocked), unlike `add`.
+> - **Report views (later)**: after the base tables exist, add read-only views
+>   for entity/presence, entry attributes, and mention co-occurrence, then build
+>   `report` on top with `--json` first. No report tables, no effort scalars.
 > - **Open items**: pick the embedding model + index only if semantic-recall
->   gaps appear; choose the MCP framework; finalize the remaining subcommands.
+>   gaps appear; choose the MCP framework; finalize the remaining subcommands
+>   and the report/dashboard output format.
